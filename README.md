@@ -4,9 +4,8 @@ Reference implementation for the research proposal *What Additive Risk-Adjusted
 Rewards Actually Optimise in Reinforcement Learning for Asset Allocation*.
 
 **Start with `python -m mvrl.gap`.** That module tests whether the research gap
-is real, and does so without any reinforcement learning: the surrogate optimum
-is computed exactly, so nothing it reports can be attributed to a learning
-algorithm.
+is real, without any reinforcement learning: the surrogate optimum is computed
+exactly, so nothing it reports can be attributed to a learning algorithm.
 
 ## Install
 
@@ -34,6 +33,8 @@ and are independently verified, nothing measured against them would mean anythin
 | `decomposition.py` | The error decomposition, as far as it is currently computable |
 | `surrogate.py` | Exact optimum of an additive risk-adjusted reward |
 | `gap.py` | **The decisive experiment: does the research gap exist?** |
+| `agent.py` | Policy-gradient agent trained on the additive reward |
+| `phase1.py` | **The complete three-term decomposition, measured** |
 | `inconsistency.py` | Numerical demonstration of equation (8) of the proposal |
 | `verify.py` | Ten independent checks on all of the above |
 
@@ -41,6 +42,7 @@ and are independently verified, nothing measured against them would mean anythin
 
 ```bash
 python -m mvrl.gap             # the decisive experiment  <-- start here
+python -m mvrl.phase1          # the complete decomposition (slow, ~10 min)
 python -m mvrl.verify          # full verification suite (10 checks)
 python -m mvrl.inconsistency   # time-inconsistency demonstration
 python -m mvrl.decomposition   # decomposition terms and sensitivity
@@ -141,6 +143,44 @@ This is Gap 3 of the proposal, demonstrated rather than asserted. No amount of
 backtesting reveals the error reward design introduces, because the reported
 statistic does not order policies the way the objective does. The error has to be
 measured against a known optimum, which is what the rest of this package provides.
+
+## Phase 1 result: the complete decomposition
+
+With `agent.py` all four policies exist, so the decomposition can be evaluated
+term by term. At `phi = kappa = 1`, five seeds:
+
+    J(pi_pre)  = 1.425799294     pre-committed optimum      exact
+    J(pi_eq)   = 1.323643886     equilibrium                exact
+    J(pi_r)    = 1.316579788     surrogate optimum          exact
+    J(pi_hat)  = 1.307875869     trained agent              sd 0.0032
+
+    eps_incons = +0.102155409
+    eps_surr   = +0.007064097
+    eps_learn  = +0.008703920
+    -------------------------
+    sum        = +0.117923426  = J(pi_pre) - J(pi_hat)   (closes to 0.0e+00)
+
+The agent is trained on the additive reward alone and never sees `J`.
+
+**The ranking of the three terms depends on the configuration.** `eps_incons`
+decays as `1/phi` while `eps_surr` grows, so they cross near `phi = 12`:
+
+| phi | eps_incons | eps_surr | eps_learn | dominant |
+|---|---|---|---|---|
+| 0.5 | 0.204311 | 0.010937 | 0.047494 | incons |
+| 1 | 0.102155 | 0.007064 | 0.008635 | incons |
+| 4 | 0.025539 | 0.004919 | 0.000573 | incons |
+| 8 | 0.012769 | 0.005575 | -0.000129 | incons |
+| 16 | 0.006385 | 0.007639 | 0.000053 | **surr** |
+| 32 | 0.003192 | 0.012145 | -0.000346 | **surr** |
+| 64 | 0.001596 | 0.021345 | -0.000901 | **surr** |
+
+So "is reward design the problem?" has no configuration-free answer. A study
+reporting a single risk aversion reports one point on this curve without saying
+which, and two studies disagreeing about the importance of reward design may
+simply sit on opposite sides of the crossover. `eps_learn` is negligible
+throughout and occasionally negative, the agent being a stochastic optimiser of
+an objective whose exact optimum is known.
 
 ## Supporting results
 
