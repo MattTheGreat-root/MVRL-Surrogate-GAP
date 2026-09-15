@@ -1,11 +1,16 @@
 # Surrogate gap in reinforcement learning for asset allocation
 
-Reference implementation for the research proposal *What Additive Risk-Adjusted
-Rewards Actually Optimise in Reinforcement Learning for Asset Allocation*.
+Code and paper for *What Additive Risk-Adjusted Rewards Optimise in
+Reinforcement Learning for Asset Allocation*.
 
-**Start with `python -m mvrl.gap`.** That module tests whether the research gap
-is real, without any reinforcement learning: the surrogate optimum is computed
-exactly, so nothing it reports can be attributed to a learning algorithm.
+**The problem.** The field trains RL agents on risk-adjusted per-period rewards
+— a Sharpe ratio, a variance penalty — and maximises the sum. That sum is not
+the mean-variance criterion it is meant to represent, and nobody has quantified
+what it actually optimises. This work does.
+
+**Start with `python -m mvrl.gap`.** It tests whether the gap is real using no
+reinforcement learning at all: the surrogate optimum is computed exactly, so
+nothing it reports can be blamed on a learning algorithm.
 
 ## Install
 
@@ -13,14 +18,28 @@ exactly, so nothing it reports can be attributed to a learning algorithm.
 pip install -r requirements.txt
 ```
 
-Python 3.10+, numpy and scipy only.
+Python 3.10+, numpy and scipy only. See `REPRODUCE.md` for expected values to
+check against.
 
----
+## The main result
 
-This stage builds the ground truth: both reference policies of the proposal, the
-exact evaluator for the mean-variance objective, and the first term of the error
-decomposition. No reinforcement learning yet — until the reference policies exist
-and are independently verified, nothing measured against them would mean anything.
+For the variance-penalised reward `r = d - kappa d^2` in an i.i.d. market, the
+surrogate optimum recovers the mean-variance **equilibrium** policy exactly
+when the gross riskless return is 1 and
+
+    kappa* = phi (1 - nu),        nu = m^T M^-1 m
+
+— not at `kappa = phi`, the obvious choice. Verified to 1e-16 for every horizon
+and asset count tested, `nu` from 0.001 to 0.98, `phi` from 0.1 to 50.
+
+The correction is a **discrete-time effect**: `nu = SR^2 * Delta + O(Delta^2)`,
+so it vanishes as the rebalancing interval shrinks. 11% at annual rebalancing,
+2.7% quarterly, under 0.25% weekly. This is also why it does not appear in the
+equilibrium mean-variance literature, which works in continuous time.
+
+When the riskless return is not 1, no `kappa` recovers the equilibrium and the
+minimal attainable policy distance is linear in `s - 1`, with the constant in
+closed form at `T = 2`.
 
 ## Contents
 
@@ -30,101 +49,46 @@ and are independently verified, nothing measured against them would mean anythin
 | `policies.py` | Li–Ng pre-committed closed form; myopic policy; affine container |
 | `equilibrium.py` | Equilibrium (consistent planning) policy by backward recursion |
 | `evaluate.py` | Exact moment-propagation evaluator for `J`, plus Monte Carlo |
-| `decomposition.py` | The error decomposition, as far as it is currently computable |
-| `surrogate.py` | Exact optimum of an additive risk-adjusted reward |
-| `gap.py` | **The decisive experiment: does the research gap exist?** |
+| `surrogate.py` | Surrogate optimum: exact backward recursion, and an independent optimiser |
 | `agent.py` | Policy-gradient agent trained on the additive reward |
-| `phase1.py` | **The complete three-term decomposition, measured** |
-| `inconsistency.py` | Numerical demonstration of equation (8) of the proposal |
+| `inconsistency.py` | Numerical demonstration that the Bellman equation fails |
+| `decomposition.py` | `eps_incons` and its sensitivity |
+| `gap.py` | **Does the research gap exist?** |
+| `phase1.py` | The complete three-term decomposition, measured |
+| `lambda_functional.py` | **The main result: the structure of Lambda** |
+| `dsr.py` | The differential Sharpe ratio and its implied risk aversion |
+| `phase5.py` | Out-of-model evaluation, and the statistical power of a backtest |
 | `verify.py` | Ten independent checks on all of the above |
 
 ## Running
 
 ```bash
-python -m mvrl.gap             # the decisive experiment  <-- start here
-python -m mvrl.phase1          # the complete decomposition (slow, ~10 min)
-python -m mvrl.verify          # full verification suite (10 checks)
-python -m mvrl.inconsistency   # time-inconsistency demonstration
-python -m mvrl.decomposition   # decomposition terms and sensitivity
+python -m mvrl.verify              # 10 checks, ~4 s  <-- run this first
+python -m mvrl.gap                 # the decisive experiment, ~90 s
+python -m mvrl.lambda_functional   # the main result, ~1 s
+python -m mvrl.dsr                 # differential Sharpe ratio, ~3 min
+python -m mvrl.phase5              # out of model, ~1 min
+python -m mvrl.phase1              # full decomposition with RL, ~10 min
+python -m mvrl.inconsistency       # Bellman failure, <1 s
+python -m mvrl.decomposition       # eps_incons sensitivity, <1 s
 ```
 
-## What is implemented
+## Results
 
-**Pre-committed policy** (`policies.li_ng_precommitted`). The Li–Ng embedding in
-the auxiliary problem `max E[lambda x_T - phi x_T^2]`, giving a control affine in
-wealth, `u*_t(x) = alpha_t x + beta_t`. The multiplier is fixed by
-`lambda = 1 + 2 phi E[x_T]`; since `E[x_T]` is affine in `lambda`, this is solved
-exactly from two evaluations rather than by iteration.
+### The gap is real
 
-**Equilibrium policy** (`equilibrium.solve_equilibrium`). Consistent planning in
-the sense of Strotz and Björk–Murgoci. The moment functions `f(t,x) = E[x_T]` and
-`g(t,x) = E[x_T^2]` under the equilibrium continuation are affine and quadratic
-respectively, which closes a backward recursion with
+**The most common reward in the literature has no optimum.** Plain return
+carries no risk term, so the additive objective rewards unbounded leverage:
+0.88, 8.1, 80, 801, 8010, 80098 along a ray. The mean-variance problem it stands
+in for is bounded. Anyone running an algorithm on it is solving a problem with no
+answer, and gets whatever their leverage limits and stopping rule produce.
 
-    D_{t+1} = B_{t+1} M - A_{t+1}^2 m m^T,   d = D_{t+1}^{-1} m
-    alpha_t = s (A_{t+1}^2 - B_{t+1}) d
-    beta_t  = [A_{t+1} - phi b_{t+1} + 2 phi A_{t+1} a_{t+1}] d / (2 phi)
+**With a risk term, the surrogate optimum is a third policy.** At the best
+`kappa`: distance 0.19 from the equilibrium, 3.23 from the pre-committed, and
+`eps_surr` is **negative** (-0.0025) — so it is not a degraded equilibrium
+policy but a distinct object.
 
-Concavity of the one-step problem requires `D_{t+1}` positive definite; this is
-checked at every step rather than assumed.
-
-## Verification
-
-Ten checks, all passing. The ones that carry weight:
-
-- **Eight L-BFGS-B restarts from random points**, given no knowledge of the
-  embedding, converge to the closed-form value to 2.6e-12. Independent derivation
-  route, so agreement is real evidence the algebra is right.
-- The gradient of `J` vanishes at the closed-form policy (1.7e-9).
-- **The equilibrium condition is tested directly**: at a range of times and wealth
-  levels the optimiser is asked to beat the equilibrium action with the
-  continuation held fixed. Best improvement found: 0.
-- Monte Carlo agrees with the exact evaluator; the embedding fixed point
-  reproduces the policy to 2.7e-15; no perturbation out of 4000 improves on it.
-
-An earlier version of the first check used Nelder–Mead, which failed to converge
-in 24 dimensions and so passed vacuously by only confirming the optimiser did not
-*beat* the closed form. The current version requires agreement in both directions.
-
-## Does the research gap exist?
-
-`gap.py` tests the proposal's central claim directly. No reinforcement learning
-is involved: in this market the maximiser of an additive quadratic reward is
-computed to numerical precision, so nothing below can be blamed on a learning
-algorithm. Any gap that appears is a property of the reward.
-
-**1. The most common reward in the literature has no optimum.** The plain-return
-reward carries no risk term, so the additive objective rewards unbounded
-leverage. Along a ray of increasing position size it grows without bound
-(0.88, 8.1, 80, 801, 8010, 80098). The mean-variance problem it stands in for is
-well posed and bounded; the surrogate is not. Anyone running an algorithm on this
-reward is not solving a poorly-conditioned version of the right problem — they
-are solving one with no answer, and what they get is whatever their leverage
-limits and early stopping produce.
-
-**2. With a risk term, the surrogate optimum is a third policy.** For the
-variance-penalised reward at its best `kappa`:
-
-    J(pi_pre)               = 1.425799294
-    J(pi_eq)                = 1.323643886
-    J(pi_r) at kappa*       = 1.326118461      kappa* = 0.808485
-
-    eps_surr = J(pi_eq) - J(pi_r)  = -0.002474575
-    shortfall vs pre-committed     =  0.099680834   (97.6% of eps_incons)
-    distance(pi_r, pi_eq)          =  0.192068
-    distance(pi_r, pi_pre)         =  3.233002
-
-`pi_r` is not the equilibrium policy, and no `kappa` makes it so. It is nowhere
-near the pre-committed policy. And `eps_surr` is **negative**, so the surrogate
-is not a degraded equilibrium policy — it is a distinct third object. That is
-what the proposal claims and what the literature does not address.
-
-Note also that `kappa* = 0.808 != phi = 1.0`. Setting the reward's risk penalty
-equal to one's actual risk aversion — the obvious thing to do — is not optimal,
-and costs 0.0095 here.
-
-**3. The Sharpe ratio ranks these policies in the wrong order.** This is the
-sharpest result:
+**The Sharpe ratio ranks policies in the wrong order.**
 
 | policy | Sharpe | J |
 |---|---|---|
@@ -133,107 +97,109 @@ sharpest result:
 | surrogate, kappa* | 1.1542 | 1.326118 |
 | surrogate, kappa=phi | **1.1955** | **1.316580** |
 
-The `kappa = phi` surrogate has a **higher** Sharpe ratio than the equilibrium
-policy and a **lower** mean-variance objective. The two orderings disagree. A
-study comparing these policies by reported Sharpe ratio — the standard practice
-the surveys describe — would conclude the surrogate is better on precisely the
-criterion it is worse on.
+Not a constructed example: over 519 random (market, phi) pairs the two orderings
+disagree in **93.1%** of cases.
 
-This is Gap 3 of the proposal, demonstrated rather than asserted. No amount of
-backtesting reveals the error reward design introduces, because the reported
-statistic does not order policies the way the objective does. The error has to be
-measured against a known optimum, which is what the rest of this package provides.
+### The complete decomposition
 
-## Phase 1 result: the complete decomposition
+    J(pi_pre) = 1.425799294   exact        eps_incons = +0.102155409
+    J(pi_eq)  = 1.323643886   exact        eps_surr   = +0.007064097
+    J(pi_r)   = 1.316579788   exact        eps_learn  = +0.008703920
+    J(pi_hat) = 1.307875869   5 seeds      ---------------------------
+                              sd 0.0032    sum        = +0.117923426
 
-With `agent.py` all four policies exist, so the decomposition can be evaluated
-term by term. At `phi = kappa = 1`, five seeds:
+The identity closes to 0.0e+00. The agent is trained on the additive reward
+alone and never sees `J`.
 
-    J(pi_pre)  = 1.425799294     pre-committed optimum      exact
-    J(pi_eq)   = 1.323643886     equilibrium                exact
-    J(pi_r)    = 1.316579788     surrogate optimum          exact
-    J(pi_hat)  = 1.307875869     trained agent              sd 0.0032
+**Which term dominates depends on `phi`.** `eps_incons` decays as `1/phi` while
+`eps_surr` grows, so they cross — near `phi = 12` in this market, between 4 and
+10 across random markets. So "is reward design the problem?" has no
+configuration-free answer, and two studies disagreeing may sit on opposite sides
+of the crossover.
 
-    eps_incons = +0.102155409
-    eps_surr   = +0.007064097
-    eps_learn  = +0.008703920
-    -------------------------
-    sum        = +0.117923426  = J(pi_pre) - J(pi_hat)   (closes to 0.0e+00)
+`eps_learn` is small and occasionally negative. This is structural, not seed
+noise: it is measured in `J` while the agent optimises `J_r`, so a worse
+maximiser of `J_r` can sit closer to the `J`-optimum.
 
-The agent is trained on the additive reward alone and never sees `J`.
+### The differential Sharpe ratio is a variance penalty in disguise
 
-**The ranking of the three terms depends on the configuration.** `eps_incons`
-decays as `1/phi` while `eps_surr` grows, so they cross near `phi = 12`:
+Expanding the increments gives `r^DSR ~ rho - kappa_eff rho^2` with
+`kappa_eff = A/(2B)`. Since `A`, `B` estimate the return's first two moments,
+`kappa_eff -> E[rho]/(2 E[rho^2]) = 22.51` for this market — a quantity with **no
+preference parameter in it**. Optimising the DSR and finding the closest member
+of the variance-penalised family gives `kappa = 21.56` against 22.51 predicted,
+residual distance 0.019.
 
-| phi | eps_incons | eps_surr | eps_learn | dominant |
+Inverting the main result: `phi_implied = 27.9`. A practitioner choosing this
+reward believes they are asking for risk-adjusted return; they are asking for
+mean-variance at a risk aversion the market sets and nothing reports.
+
+### Out of model
+
+Under processes matched to the same first two moments:
+
+| process | pre-committed | equilibrium | surrogate k* | surrogate k=phi |
 |---|---|---|---|---|
-| 0.5 | 0.204311 | 0.010937 | 0.047494 | incons |
-| 1 | 0.102155 | 0.007064 | 0.008635 | incons |
-| 4 | 0.025539 | 0.004919 | 0.000573 | incons |
-| 8 | 0.012769 | 0.005575 | -0.000129 | incons |
-| 16 | 0.006385 | 0.007639 | 0.000053 | **surr** |
-| 32 | 0.003192 | 0.012145 | -0.000346 | **surr** |
-| 64 | 0.001596 | 0.021345 | -0.000901 | **surr** |
+| Gaussian | 1.4267 | 1.3236 | 1.3261 | 1.3166 |
+| Student-t(4) | 1.4252 | 1.3238 | 1.3263 | 1.3166 |
+| vol clustering | 1.4037 | 1.3234 | 1.3258 | 1.3163 |
+| AR(1) momentum | **0.9285** | 1.1886 | 1.1865 | **1.2270** |
 
-So "is reward design the problem?" has no configuration-free answer. A study
-reporting a single risk aversion reports one point on this curve without saying
-which, and two studies disagreeing about the importance of reward design may
-simply sit on opposite sides of the crossover. `eps_learn` is negligible
-throughout and occasionally negative, the agent being a stochastic optimiser of
-an objective whose exact optimum is known.
+Fat tails and volatility clustering leave the ordering intact. **Serial
+correlation reverses it**, and the pre-committed policy collapses. Every closed
+form here assumes independence across periods; the results should not be read as
+applying to markets with predictability. This is the most important open problem.
 
-## Supporting results
+**A backtest gets it wrong, and more data makes it worse.** Probability that a
+Sharpe comparison of `n` independent replications picks the `J`-better policy:
+0.022 at `n=10`, 0.003 at 50, 0.000 at 200 and above. More data increases
+confidence in the wrong answer, because it estimates the wrong quantity with
+increasing precision.
 
-Three further facts came out of running the code rather than out of the proposal.
+## Verification
 
-**1. Time-inconsistency is driven by deviation from the expected path.** The
-committed plan and a fresh re-solve at `t = 1` disagree, and the disagreement is
-affine in wealth and vanishes at exactly one point: `E[x_1]`, the wealth the
-time-0 self expected, to 1.8e-15 across markets, horizons, risk aversions and
-asset counts. The mechanism is in the embedding — `lambda` is pinned by `E[x_T]`,
-so when realised wealth matches expectation the re-solve recovers the same
-`lambda`. The reversal is therefore a property of realised paths, invisible to any
-analysis working in expectation, and largest away from the mean path, which is
-where a learning algorithm spends its sampling time.
+Ten checks in `verify.py`, all passing. The ones that carry weight:
 
-**2. The two reference policies differ structurally.** The equilibrium control is
-wealth-independent (`alpha_t = 0` identically, equivalently `A_t^2 = B_t`): it
-holds a constant *amount* in the risky assets, where the pre-committed control
-holds an affine function of wealth with negative slope. This reproduces the known
-structure of the equilibrium mean-variance policy and is independent evidence the
-recursion is correct. It also sharpens the proposal's point: "approximating the
-mean-variance optimum" is ambiguous between two policies of different functional
-form, not merely different parameters.
+- **Eight L-BFGS-B restarts from random points**, given no knowledge of the
+  Li–Ng embedding, converge to the closed-form value to 2.6e-12.
+- The gradient of `J` vanishes at the closed-form policy (1.7e-9).
+- **The equilibrium condition is tested against its definition**: the optimiser
+  is asked to beat the equilibrium action with the continuation held fixed. Best
+  improvement found: 0.
+- The equilibrium recursion, derived here rather than quoted, reproduces Basak &
+  Chabakauri's continuous-time formula to 0.76%, 0.25%, 0.06%, 0.01%, 0.00% as
+  one year is split into 4, 12, 52, 252, 2520 steps.
 
-**3. `eps_incons` scales exactly as `1/phi` and does not depend on `x0`.**
-Verified to 9e-13 and 5e-15 respectively. This matters for experimental design in
-Step 3: the price of time-consistency can be made arbitrarily small relative to
-the other error terms by raising `phi`, which is how the surrogate gap will be
-isolated. It grows with the horizon, so a short horizon keeps it out of the way.
+An earlier version of the first check used Nelder–Mead, which failed to converge
+in 24 dimensions and passed vacuously by only confirming the optimiser did not
+*beat* the closed form. See `WORKLOG.md` for the other twelve errors caught.
 
-For the market in `decomposition.py` (3 assets, 4 periods, `phi = 1`):
+## Documents
 
-    J(pi_pre)  = 1.425799294
-    J(pi_eq)   = 1.323643886
-    eps_incons = 0.102155409     (7.2% of J(pi_pre))
+- `paper.pdf` / `paper.tex` — the paper. **Section 9 lists what is not done.**
+- `proposal.pdf` / `proposal.tex` — the original research proposal
+- `FINDINGS.md` — current state of knowledge, reproduced results kept separate from new
+- `WORKLOG.md` — full history including all 13 errors caught
+- `REPRODUCE.md` — expected values for local verification
+- `CONTRIBUTING.md` — working discipline
 
-All three findings should be checked against Li & Ng (2000) and Basak &
-Chabakauri (2010) before being described as new. The second is certainly known.
-The first and third fall out of the embedding naturally enough that they may be
-too, in which case cite rather than claim.
+## Status
 
-## Not yet implemented
+This is a working draft, not a submission. Outstanding, in priority order:
 
-- `pi_r`, the maximiser of the additive surrogate, and hence `eps_surr` and
-  `eps_learn`. These are Steps 2 and 4 of the proposal.
-- The augmented MDP for the differential Sharpe ratio (Step 2).
-- Transaction costs; the dynamics are frictionless.
+1. **Dependent returns.** The out-of-model result above shows the ordering
+   reversing under serial correlation. Needs fixing or clear scope bounding.
+2. **Error bounds for the `T = 2` constant.** Currently a series expansion with
+   numerical confirmation, not a rigorous bound.
+3. **The constant for `T >= 3`.** Grows superlinearly (log-log exponent 1.16),
+   no closed form.
+4. **A formal priority search.** `kappa* = phi(1-nu)` was not found in the
+   literature and the discrete-time argument explains why it would not be, but
+   that is an argument, not a proof of novelty.
 
 ## Assumptions
 
-Returns are i.i.d. across periods with known first two moments; no transaction
+Returns i.i.d. across periods with known first two moments; no transaction
 costs, no short-sale constraint, no leverage limit. `u` is an amount, not a
-weight, so the simplex constraint of the proposal is not imposed here — the
-pre-committed solution is unconstrained by construction and imposing the
-constraint would forfeit the closed form. Reconciling the two is a design
-question for Step 3, not an oversight.
+weight, so the simplex constraint is not imposed — the pre-committed solution is
+unconstrained by construction and imposing the closed form would forfeit it.
