@@ -60,7 +60,7 @@ The first term is the known price of time-consistency; the third is the optimisa
 error addressed by existing convergence theory. The middle term, which I call the
 \emph{surrogate gap}, is the contribution of reward design itself, and is invisible to
 every backtest-based evaluation in the applied literature. The primary theoretical
-target is a bound of the form $\epssurr(r) \le C\,\Lambda(r)^{\gamma}$ together with a
+target is a bound of the form $\|\pir-\pieq\| \le C\,\Lambda(r)$ together with a
 characterisation of the rewards for which $\Lambda(r)=0$. The project is theoretical;
 numerical work uses a synthetic market in which the pre-committed optimum is available
 in closed form, so that $\epssurr$ can be measured against ground truth rather than
@@ -317,22 +317,42 @@ exponent to be determined.
 
 \begin{theorem}[Target]
 \label{thm:target}
-Under regularity assumptions on the return distribution and the admissible policy class,
-there exist a functional $\Lambda$ on the reward class $\mathcal{R}$, a constant $C>0$
-and an exponent $\gamma>0$ such that for every $r\in\mathcal{R}$,
+Under regularity assumptions on the return distribution and the admissible policy
+class, there exist a functional $\Lambda$ on the reward class $\mathcal{R}$ and a
+constant $C>0$ such that for every $r\in\mathcal{R}$,
 \[
-0\;\le\;\epssurr(r)\;\le\;C\,\Lambda(r)^{\gamma},
+\bigl\|\,\pir-\pieq\,\bigr\|\;\le\;C\,\Lambda(r),
 \]
-with $\epssurr(r)=0$ if and only if $\Lambda(r)=0$. Moreover $\Lambda(r)=0$ for the
-logarithmic return reward, and $\Lambda(r)>0$ for the variance-penalised and
-Sharpe-based rewards in common use.
+with the left-hand side vanishing if and only if $\Lambda(r)=0$, and with the
+value gap $|\epssurr(r)|$ bounded as a corollary.
 \end{theorem}
 
 \noindent
-Combining Theorem~\ref{thm:target} with \eqref{eq:decomp} and an existing bound on
+The statement is made for the policy distance rather than for $\epssurr$
+directly. This is deliberate: $\epssurr$ is a difference of scalar objective
+values and is not sign-definite, so it passes through zero at parameter values
+where the two policies still differ, and an ``if and only if'' stated for it
+would be false.
+
+Preliminary work has settled this for the i.i.d. market with the
+variance-penalised reward $r=d-\kappa d^{2}$, $d$ the wealth increment. Writing
+$\nu=m^{\top}M^{-1}m$, the surrogate optimum coincides with the equilibrium
+policy exactly when the gross riskless return is $1$ and
+$\kappa=\varphi(1-\nu)$; when it is not, the residual distance is linear in
+$s-1$. Hence
+\[
+\Lambda(r)\;=\;\bigl|\kappa-\varphi(1-\nu)\bigr|\;+\;c\,|s-1|,
+\qquad \gamma=1,
+\]
+with $c$ known in closed form for a two-period horizon. Extending this to
+general horizons, and to reward classes beyond the variance-penalised family,
+is the remaining work.
+
+\noindent
+Combining the corollary of Theorem~\ref{thm:target} with \eqref{eq:decomp} and a bound on
 $\epslearn$ yields the end-to-end statement
 \begin{equation}
-J(\pipre)-J(\pihat)\;\le\;\epsincons(\varphi)+C\,\Lambda(r)^{\gamma}+\epslearn ,
+J(\pipre)-J(\pihat)\;\le\;\epsincons(\varphi)+C'\,\Lambda(r)+\epslearn ,
 \label{eq:endtoend}
 \end{equation}
 which separates the three sources of shortfall and attributes each to its cause: the
@@ -362,13 +382,19 @@ each policy be admissible and $J$ well defined; establishing this rigorously is 
 first step. The substantive work is the construction of $\Lambda$ and the proof of
 Theorem~\ref{thm:target}.
 
-Two limiting cases are already clear and serve as consistency checks. With logarithmic
-return and no risk term the objective becomes expected log-wealth, which is additive
-across periods and therefore time-consistent by construction; this is the Kelly
-criterion and dynamic programming is valid, so $\Lambda=0$ and $\epssurr=0$. This
-explains why the log-return reward used by Jiang et al. (2017) and
-Li (2019) rests on firmer ground than the field's typical Sharpe-based
-rewards, a point neither paper makes. At the other extreme, a terminal-only variance
+One limiting case is worth stating carefully, because it is easy to get wrong.
+With logarithmic return and no risk term the objective becomes expected
+log-wealth, which is additive across periods and therefore time-consistent by
+construction: dynamic programming is valid for it. That does \emph{not} make
+$\Lambda=0$. The objective it is consistent with is expected log-wealth, whose
+optimum is the Kelly policy, and $\Lambda$ measures distance from the
+mean-variance equilibrium policy, which is a different object. Numerically the
+Kelly policy holds a fraction of wealth in the risky assets while the
+mean-variance equilibrium holds a constant amount, so the two differ in
+functional form and not merely in parameters. Time-consistency of the surrogate
+is therefore necessary for a small $\Lambda$ but nowhere near sufficient, and
+this distinction is the one the construction of $\Lambda$ has to respect. At the
+other extreme, a terminal-only variance
 penalty fails additivity outright and the analysis reduces to the known
 time-inconsistency of \eqref{eq:mv}.
 
@@ -459,8 +485,8 @@ empirical content of the third row of the gap table.
 \item[C1. Error decomposition.] Isolation of the surrogate gap $\epssurr$ as a distinct
 source of error in reinforcement learning for risk-adjusted objectives, via the exact
 decomposition \eqref{eq:decomp}.
-\item[C2. Characterisation.] A bound $\epssurr(r)\le C\Lambda(r)^{\gamma}$ together with
-necessary and sufficient conditions for $\epssurr(r)=0$, and the resulting end-to-end
+\item[C2. Characterisation.] A bound $\|\pir-\pieq\|\le C\Lambda(r)$ together with
+necessary and sufficient conditions for the policies to coincide, and the resulting end-to-end
 statement \eqref{eq:endtoend}.
 \item[C3. Augmented formulation.] A Markov formulation of the differential Sharpe ratio
 reward under which \eqref{eq:bellman} is restored, with $\Lambda$ computed for it.
@@ -484,8 +510,7 @@ Phase 1 & Formalise the discrete-time mean-variance MDP. Define $\pipre$, $\pieq
 $\pir$ precisely and establish that \eqref{eq:decomp} is exact under stated
 admissibility conditions.\\[0.35em]
 Phase 2 & Construct $\Lambda$. Prove Theorem~\ref{thm:target}, or failing that produce
-the two-asset counterexample with an explicit $\epssurr>0$. Verify the Kelly case
-$\Lambda=0$.\\[0.35em]
+the two-asset counterexample with an explicit $\epssurr>0$.\\[0.35em]
 Phase 3 & Augmented MDP for the differential Sharpe ratio: Markov property, validity of
 \eqref{eq:bellman} on the augmented space, computation of
 $\Lambda(r^{\mathrm{DSR}})$.\\[0.35em]
@@ -547,7 +572,7 @@ case where the true optimum is known.
 
 The desired outcome is a statement of the form
 \[
-J(\pipre)-J(\pihat)\;\le\;\epsincons(\varphi)+C\,\Lambda(r)^{\gamma}+\epslearn ,
+J(\pipre)-J(\pihat)\;\le\;\epsincons(\varphi)+C'\,\Lambda(r)+\epslearn ,
 \]
 separating the price of time-consistency, the cost of reward design, and the error of
 the learning algorithm. Whichever way the constants fall, the result identifies what an
