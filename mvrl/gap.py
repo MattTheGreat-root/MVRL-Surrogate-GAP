@@ -1,18 +1,5 @@
-"""
-Does the research gap exist?  The decisive experiment.
-
-Everything else in this package reproduces results that are already known.  The
-proposal's contribution rests on a claim that is not known: that maximising an
-additive risk-adjusted reward targets a policy which is neither the
-pre-committed optimum nor the equilibrium policy, and that the resulting error
-is invisible to the statistics the field reports.
-
-This module tests that claim, exactly.  No reinforcement learning is involved,
-so no result here can be blamed on a learning algorithm: the surrogate optimum
-is computed to numerical precision.  Whatever gap appears is a property of the
-reward.
-
-Run with ``python -m mvrl.gap``.
+"""Legacy exact illustration of reward/financial-objective disagreement.
+Current calibrated comparisons and limitations are in mvrl.experiments.
 """
 
 from __future__ import annotations
@@ -150,7 +137,7 @@ equal to one's actual risk aversion, is not optimal.""")
     for name, policy in rows:
         ev = exact_affine_objective(market, policy, phi, x0)
         sd = float(np.sqrt(ev.variance))
-        sharpe = (ev.mean - x0) / sd
+        sharpe = (ev.mean - x0 * np.prod([market.s(t) for t in range(market.horizon)])) / sd
         table.append((name, sharpe, ev.objective))
         print(f"  {name:<20}{ev.mean:10.4f}{sd:10.4f}{sharpe:10.4f}"
               f"{ev.objective:14.6f}")
@@ -174,13 +161,6 @@ equal to one's actual risk aversion, is not optimal.""")
   conclude that the surrogate policy is the better one on exactly the criterion
   it is worse on.""")
 
-    print("""
-This is the third gap of the proposal, demonstrated rather than asserted.  The
-statistic the field reports does not order policies the way the objective does,
-so no amount of backtesting can reveal the error that reward design introduces.
-It has to be measured against a known optimum, which is what the rest of this
-package makes possible.""")
+    print('This example shows ranking disagreement. It is not a claim against Sharpe as a different objective.')
 
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__': main()

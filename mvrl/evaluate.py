@@ -55,29 +55,15 @@ def exact_affine_objective(
 
     using independence of P_t from x_t.
     """
-    first = float(x0)
-    second = float(x0) ** 2
+    mean, variance = float(x0), 0.0
     for t in range(market.horizon):
-        s = market.s(t)
-        m = market.m(t)
-        M = market.M(t)
-        a = policy.alpha[t]
-        b = policy.beta[t]
-
-        new_first = s * first + m @ (a * first + b)
-        new_second = (
-            s * s * second
-            + 2.0 * s * ((a @ m) * second + (b @ m) * first)
-            + (a @ M @ a) * second
-            + 2.0 * (a @ M @ b) * first
-            + (b @ M @ b)
-        )
-        first, second = new_first, new_second
-
-    variance = second - first * first
-    return Evaluation(
-        mean=first, variance=variance, objective=first - phi * variance
-    )
+        s, m, M = market.s(t), market.m(t), market.M(t)
+        cov = M - np.outer(m, m)
+        a, b = policy.alpha[t], policy.beta[t]
+        u = a * mean + b
+        variance = (s + m @ a)**2 * variance + u @ cov @ u + variance * (a @ cov @ a)
+        mean = s * mean + m @ u
+    return Evaluation(mean=mean, variance=variance, objective=mean-phi*variance)
 
 
 def simulate(

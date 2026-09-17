@@ -1,52 +1,6 @@
-"""
-The surrogate gap, computed exactly.
-
-This is the module that tests the proposal's central claim.  Everything else in
-this package reproduces known results; this asks whether the quantity the
-project is about is actually non-zero.
-
-The claim under test
---------------------
-Practitioners encode risk into a per-period reward and maximise the sum
-
-    J_r(pi) = E[ sum_t r_t ].
-
-The proposal argues that the maximiser ``pi_r`` of this additive surrogate is
-neither the pre-committed optimum nor the equilibrium policy, and that the
-resulting shortfall
-
-    eps_surr = J(pi_eq) - J(pi_r)
-
-is a distinct source of error that the literature does not account for.
-
-Why no reinforcement learning is needed here
---------------------------------------------
-In this market the optimal affine control for an additive quadratic reward can
-be found by direct maximisation of an exactly-computed objective.  There is no
-sampling error and no optimisation error: ``pi_r`` is obtained to numerical
-precision.  Any gap that appears is therefore a property of the reward itself,
-not an artefact of a learning algorithm.  This matters for the argument: it
-separates ``eps_surr`` from ``eps_learn`` cleanly, which is exactly what the
-decomposition claims can be done.
-
-Rewards implemented
--------------------
-Writing the per-period wealth increment as ``d_t = x_{t+1} - x_t``:
-
-    plain      r_t = d_t
-               Sums to x_T - x_0, so maximising it maximises E[x_T] with no
-               risk term at all.  This is the "portfolio return" reward that
-               Bai et al. report as the most common choice in the surveyed
-               literature.
-
-    varpen     r_t = d_t - kappa * d_t^2
-               Per-period variance penalty.  This is the additive stand-in for
-               the mean-variance criterion that practitioners actually write
-               down, and the main object of interest.
-
-    quadratic  r_t = d_t - kappa * (d_t - target)^2
-               A shaped variant, included to check whether the gap is an
-               artefact of one particular functional form.
+"""Exact additive quadratic-increment optimisation on independent returns.
+The legacy name varpen denotes a SECOND-MOMENT penalty, not variance.
+Signed J differences are not nonnegative regret. See notes/PROOFS.md.
 """
 
 from __future__ import annotations
@@ -187,29 +141,22 @@ def policy_distance(
 
     Distances are measured where the policies are actually used, by weighting
     each period by the wealth distribution the left-hand policy induces.  This
-    is the discrete-time analogue of the policy-space metric in the proposal.
+    is the discrete-time analogue of the policy-space discrepancy in the proposal.
     """
-    first = float(x0)
-    second = float(x0) ** 2
+    mean, variance = float(x0), 0.0
     total = 0.0
     for t in range(market.horizon):
         da = left.alpha[t] - right.alpha[t]
         db = left.beta[t] - right.beta[t]
-        # E|| da x + db ||^2 = (da.da) E[x^2] + 2 (da.db) E[x] + (db.db)
-        total += (da @ da) * second + 2.0 * (da @ db) * first + (db @ db)
-
+        diff = da * mean + db
+        total += diff @ diff + (da @ da) * variance
         s, m, M = market.s(t), market.m(t), market.M(t)
+        cov = M - np.outer(m, m)
         a, b = left.alpha[t], left.beta[t]
-        new_first = s * first + m @ (a * first + b)
-        new_second = (
-            s * s * second
-            + 2.0 * s * ((a @ m) * second + (b @ m) * first)
-            + (a @ M @ a) * second
-            + 2.0 * (a @ M @ b) * first
-            + (b @ M @ b)
-        )
-        first, second = new_first, new_second
-    return float(np.sqrt(total))
+        u = a * mean + b
+        variance = (s + m @ a)**2 * variance + u @ cov @ u + variance * (a @ cov @ a)
+        mean = s * mean + m @ u
+    return float(np.sqrt(max(0.0, total)))
 
 
 # ---------------------------------------------------------------------------
@@ -227,13 +174,15 @@ def policy_distance(
 # reduces to the scalar one with nu = m^T M^{-1} m, every asset-specific
 # quantity entering only through nu and the fixed direction M^{-1} m.
 #
-# This supersedes the numerical optimiser above for the variance-penalised
+# This supersedes the numerical optimiser above for the second-moment-penalised
 # reward: it is exact, fast, and has no restarts to converge.  The optimiser is
 # retained because it is independent, which is what makes it useful as a check.
 # ---------------------------------------------------------------------------
 
 def surrogate_backward(market: Market, kappa: float) -> AffinePolicy:
     """Exact surrogate optimum for r = d - kappa d^2, by backward recursion."""
+    if not np.isfinite(kappa) or kappa <= 0:
+        raise ValueError("kappa must be finite and positive")
     T, n = market.horizon, market.n_assets
     alpha = np.zeros((T, n))
     beta = np.zeros((T, n))
