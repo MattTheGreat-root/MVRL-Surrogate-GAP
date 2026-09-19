@@ -1,0 +1,7 @@
+independent sweeps complete
+dependent reference sweep complete
+bounded reward and DSR comparisons complete
+learning raw complete
+learning scalar complete
+learning design complete
+saved results/experiments.json

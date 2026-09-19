@@ -1,0 +1,3 @@
+proposal: 12 pages, pdfLaTeX compiled, original 11pt A4/margins/Computer Modern, 10 vector figures, 12 resolved references; no overfull boxes, missing characters or undefined references.
+paper: 17 pages, pdfLaTeX compiled, original 11pt A4/margins/Computer Modern, 10 vector figures, 12 resolved references; no overfull boxes, missing characters or undefined references.
+Research results JSON unchanged (SHA256 verified against preceding delivery manifest).

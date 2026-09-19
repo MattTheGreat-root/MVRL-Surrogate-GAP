@@ -1,0 +1,59 @@
+Market: 3 risky assets, 4 periods, riskless gross return 1.02
+nu per period = 0.194336
+phi = 1.0,  x0 = 1.0
+
+[1] exact evaluator vs Monte Carlo
+  exact        E[x_T] =   1.76917   Var =   0.34337   J =   1.42580
+  monte carlo  E[x_T] =   1.76746   Var =   0.34630   J =   1.42116  (se 0.00093)
+  relative difference 3.25e-03   PASS
+
+[2] closed form vs direct numerical maximisation over affine policies
+  closed form         J = 1.425799294482
+  best of 8 restarts  J = 1.425799294482
+  spread across restarts 1.47e-12
+  |difference| = 2.28e-13   PASS
+
+[3] stationarity of J at the closed-form policy
+  max |dJ/dparam| at the closed form = 2.220e-10   PASS
+
+[4] local optimality under random perturbation
+  best perturbation improvement 0.000e+00   PASS
+
+[5] embedding fixed point
+  implied lambda = 4.5383328579
+  policy rebuilt from it differs by 0.00e+00   PASS
+
+[6] time-consistency holds exactly on the expected wealth path
+  T=2:  crossing 1.1667621680   E[x_1] 1.1667621680   diff 1.11e-15
+  T=3:  crossing 1.1985911018   E[x_1] 1.1985911018   diff 4.44e-16
+  T=5:  crossing 1.2844546530   E[x_1] 1.2844546530   diff 3.55e-15
+  worst difference 3.55e-15   PASS
+
+[7] equilibrium condition: no profitable single-period deviation
+  best improvement from any deviation 0.000e+00   PASS
+
+[8] equilibrium control is wealth-independent
+  max |alpha_t|      = 6.722e-16
+  max |A_t^2 - B_t|  = 2.220e-16   PASS
+
+[9] pre-committed dominates at time 0
+  J(pi_pre) = 1.425799294
+  J(pi_eq)  = 1.323643886
+  eps_incons = 0.102155409   PASS
+
+[10] eps_incons scales as 1/phi and is independent of x0
+  relative spread of eps_incons * phi   8.69e-15
+  spread across x0                      4.44e-16   PASS
+
+==============================================================
+  evaluators agree         PASS
+  closed form optimal      PASS
+  gradient vanishes        PASS
+  locally optimal          PASS
+  fixed point holds        PASS
+  consistent on mean path  PASS
+  equilibrium holds        PASS
+  equilibrium structure    PASS
+  pre-committed wins       PASS
+  eps_incons scaling       PASS
+  overall                  PASS

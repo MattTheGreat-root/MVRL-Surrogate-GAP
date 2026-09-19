@@ -86,7 +86,7 @@ class Market:
     def nu(self, t: int) -> float:
         """The scalar nu_t = m_t^T M_t^{-1} m_t.
 
-        This lies in [0, 1) whenever M_t is positive definite, and controls the
+        This lies in [0, 1) whenever the covariance is positive definite, and controls the
         contraction of the Li--Ng value recursion.  It is the multi-period
         analogue of a squared Sharpe ratio.
         """

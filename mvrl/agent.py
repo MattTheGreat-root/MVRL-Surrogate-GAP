@@ -75,7 +75,12 @@ def _per_period_rewards(
     gain = np.einsum("pi,pi->p", excess[:, t, :], actions)
     next_wealth = market.s(t) * wealth + gain
     increment = next_wealth - wealth
-    r = increment - reward.kappa * (increment - reward.target) ** 2
+    if reward.name == "design":
+        from .design import future_growth
+        y = future_growth(market, t) * gain
+        r = y - reward.kappa * (1-market.nu(t)) * y*y
+    else:
+        r = increment - reward.kappa * (increment - reward.target) ** 2
     return r, next_wealth
 
 
@@ -142,8 +147,8 @@ def reinforce(
         advantages = advantages / np.where(scale > 1e-12, scale, 1.0)
 
         # The score for a Gaussian mean is noise / sigma^2.  The 1/sigma^2
-        # factor is dropped here and absorbed into the learning rate: it is the
-        # Fisher preconditioning for this policy class, and keeping it makes the
+        # factor is dropped here and absorbed into the learning rate: it is a
+        # positive scalar rescaling of the mean score, and keeping it makes the
         # gradient variance explode as sigma anneals.  Without this the run
         # peaks early and then degrades, which is a property of the estimator
         # rather than of the objective being estimated.
@@ -176,7 +181,8 @@ def reinforce(
             current = AffinePolicy(alpha=alpha.copy(), beta=beta.copy())
             history.iterations.append(step)
             history.surrogate.append(
-                additive_objective(market, current, reward, x0)
+                (__import__("mvrl.design", fromlist=["designed_objective"]).designed_objective(market, current, reward.kappa, x0)
+                 if reward.name == "design" else additive_objective(market, current, reward, x0))
             )
             history.sigma.append(sigma)
             if phi_for_diagnostics is not None:

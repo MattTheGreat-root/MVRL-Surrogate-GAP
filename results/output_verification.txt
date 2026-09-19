@@ -1,0 +1,3 @@
+proposal 12 pages; text and margins verified
+paper 17 pages; text and margins verified
+Saved experiment counts, signed decomposition, regret, exact recovery, source hashes and document links PASS.

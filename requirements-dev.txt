@@ -1,0 +1,4 @@
+-r requirements.txt
+pytest>=7.0
+pymupdf>=1.23
+fonttools>=4.0
