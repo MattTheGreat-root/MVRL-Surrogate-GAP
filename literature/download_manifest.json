@@ -1,0 +1,62 @@
+[
+  {
+    "key": "zhang2021",
+    "url": "https://arxiv.org/pdf/2004.10888",
+    "sha256": "8bafd9affc02de21aacfd05ecbdca9dcc4a39e3e246e34d238cfdcdd62202f42",
+    "pages": 14
+  },
+  {
+    "key": "bisi2020",
+    "url": "https://www.ijcai.org/proceedings/2020/0632.pdf",
+    "sha256": "34d6e9605133101bb11d9231ea2ecc19531754fad8c7f1cefdff88a1a79f7629",
+    "pages": 7
+  },
+  {
+    "key": "basak_thesis_version",
+    "url": "https://lbsresearch.london.edu/id/eprint/2464/1/Thesis_George_Chabakauri.pdf",
+    "sha256": "9c53381f916ce81b051f21e468181a03f078dd56d35a6b9949fce4cab279c587",
+    "pages": 179
+  },
+  {
+    "key": "kolm2019",
+    "url": "https://smallake.kr/wp-content/uploads/2020/11/ReinforcementOptionsJournalVersion.pdf",
+    "sha256": "48990b6ba46fea5d82bffe4f70e8dbcf9b1f83f90ea29b3f1640f00d5d918b3a",
+    "pages": 16
+  },
+  {
+    "key": "jiang2017",
+    "url": "https://arxiv.org/pdf/1706.10059",
+    "sha256": "77bb80866c02b865137aa09ed7a1b31c981e55aa459bbcfa8a3a1f4b91fac811",
+    "pages": 31
+  },
+  {
+    "key": "yang2020",
+    "url": "https://openfin.engineering.columbia.edu/sites/openfin.engineering.columbia.edu/files/content/publications/ensemble.pdf",
+    "sha256": "07e82e1818123cf21a2b93563ee31aba77325d820b509a69c8d064ecd9b4c01a",
+    "pages": 8
+  },
+  {
+    "key": "moody2001",
+    "url": "https://people.idsia.ch/~juergen/rnnaissance2003talks/MoodySaffellTNN01.pdf",
+    "sha256": "dc191469292dd5a2a10f42837e4abbee216051e274711d4ec72f4dd7cda74e70",
+    "pages": 17
+  },
+  {
+    "key": "ling2000",
+    "url": "https://tianjiablog.wordpress.com/wp-content/uploads/2019/12/optimal-dynamic-portfolio-selection-multiperiod-mean-variance-formulation.pdf",
+    "sha256": "515b1f19b5806043a1463359783aad1319084005b704cca5095bbe77180732fd",
+    "pages": 20
+  },
+  {
+    "key": "wang2020",
+    "url": "https://arxiv.org/pdf/1904.11392",
+    "sha256": "bb125ce7ea3ea392a0c3a518fa0c20b6fe64595d479b4a155cb6b40abfff51aa",
+    "pages": 39
+  },
+  {
+    "key": "ng1999",
+    "url": "https://ai.stanford.edu/~ang/papers/shaping-icml99.pdf",
+    "sha256": "e83f9d13b8c5415d78a187a0b9000c5ab6aa90f3029d5c957f5c46caaabed207",
+    "pages": 10
+  }
+]

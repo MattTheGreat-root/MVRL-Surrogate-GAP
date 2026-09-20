@@ -1,0 +1,2524 @@
+
+=== PDF PAGE 1 ===
+arXiv:1904.11392v2  [q-fin.PM]  5 May 2019
+Continuous-Time Mean–Variance Portfolio
+Selection: A Reinforcement Learning Framework∗
+Haoran Wang†
+Xun Yu Zhou‡
+First draft: February 2019
+This version: May 2019
+Abstract
+We approach the continuous-time mean–variance (MV) portfolio
+selection with reinforcement learning (RL). The problem is to achieve
+the best tradeoﬀbetween exploration and exploitation, and is formu-
+lated as an entropy-regularized, relaxed stochastic control problem.
+We prove that the optimal feedback policy for this problem must be
+Gaussian, with time-decaying variance. We then establish connections
+between the entropy-regularized MV and the classical MV, including
+the solvability equivalence and the convergence as exploration weight-
+ing parameter decays to zero. Finally, we prove a policy improvement
+theorem, based on which we devise an implementable RL algorithm.
+We ﬁnd that our algorithm outperforms both an adaptive control based
+method and a deep neural networks based algorithm by a large margin
+in our simulations.
+Key words. Reinforcement learning, mean-variance portfolio se-
+lection, entropy regularization, stochastic control, value function, Gaus-
+sian distribution, policy improvement theorem.
+∗We are grateful for comments from the seminar participants at the Fields Institute.
+Wang gratefully acknowledges ﬁnancial supports through the FDT Center for Intelligent
+Asset Management at Columbia. Zhou gratefully acknowledges ﬁnancial supports through
+a start-up grant at Columbia University and through the FDT Center for Intelligent Asset
+Management.
+†Department of Industrial Engineering and Operations Research, Columbia University,
+New York, NY 10027, USA. Email: hw2718@columbia.edu.
+‡Department of Industrial Engineering and Operations Research, and The Data Science
+Institute, Columbia University, New York, NY 10027, USA. Email: xz2574@columbia.edu.
+1
+
+
+=== PDF PAGE 2 ===
+1
+Introduction
+Applications of reinforcement learning (RL) to quantitative ﬁnance (e.g.,
+algorithmic and high frequency trading, smart order routing, portfolio man-
+agement, etc) have attracted more attentions in recent years. One of the
+main reasons is that the electronic markets prevailing nowadays can provide
+suﬃcient amount of microstructure data for training and adaptive learn-
+ing, much beyond what human traders and portfolio managers could han-
+dle in old days.
+Numerous studies have been carried out along this di-
+rection.
+For example, Nevmyvaka et al. (2006) conducted the ﬁrst large
+scale empirical analysis of RL method applied to optimal order execution
+and achieved substantial improvement relative to the baseline strategies.
+Hendricks and Wilcox (2014) improved over the theoretical optimal trad-
+ing strategies of the Almgren-Chriss model (Almgren and Chriss (2001))
+using RL techniques and market attributes. Moody and Saﬀell (2001) and
+Moody et al. (1998) studied portfolio allocation problems with transaction
+costs via direct policy search based RL methods, without resorting to fore-
+cast models that rely on supervised leaning.
+However, most existing works only focus on RL optimization problems
+with expected utility of discounted rewards. Such criteria are either un-
+able to fully characterize the uncertainty of the decision making process in
+ﬁnancial markets or opaque to typical investors. On the other hand, mean–
+variance (MV) is one of the most important criteria for portfolio choice.
+Initiated in the seminal work Markowitz (1952) for portfolio selection in
+a single period, such a criterion yields an asset allocation strategy that
+minimizes the variance of the ﬁnal payoﬀwhile targeting some prespeciﬁed
+mean return. The MV problem has been further investigated in the discrete-
+time multiperiod setting (Li and Ng (2000)) and the continuous-time setting
+(Zhou and Li (2000)), along with hedging (Duﬃe and Richardson (1991))
+and optimal liquidation (Almgren and Chriss (2001)), among many other
+variants and generalizations. The popularity of the MV criterion is not only
+due to its intuitive and transparent nature in capturing the tradeoﬀbetween
+risk and reward for practitioners, but also due to the theoretically interest-
+ing issue of time-inconsistency (or Bellman’s inconsistency) inherent with
+the underlying stochastic optimization and control problems.
+From the RL perspective, it is computationally challenging to seek the
+global optimum for Markov Decision Process (MDP) problems under the MV
+criterion (Mannor and Tsitsiklis (2013)). In fact, variance estimation and
+control are not as direct as optimizing the expected reward-to-go which has
+been well understood in the classical MDP framework for most RL problems.
+2
+
+
+=== PDF PAGE 3 ===
+Because most standard MDP performance criteria are linear in expectation,
+including the discounted sum of rewards and the long-run average reward
+(Sutton and Barto (2018)), Bellman’s consistency equation can be easily
+derived for guiding policy evaluation and control, leading to many state-of-
+the-art RL techniques (e.g., Q-learning, temproaral diﬀerence (TD) learning,
+etc). The variance of reward-to-go, however, is nonlinear in expectation and,
+as a result, most of the well-known learning rules cannot be applied directly.
+Existing works on variance estimation and control generally divide into
+two groups, value based methods and policy based methods. Sobel (1982)
+obtained the Bellman’s equation for the variance of reward-to-go under
+a ﬁxed, given policy.
+Based on that equation, Sato et al. (2001) derived
+the TD(0) learning rule to estimate the variance under any given policy.
+In a related paper, Sato and Kobayashi (2000) applied this value based
+method to an MV portfolio selection problem.
+It is worth noting that
+due to their deﬁnition of the intermediate value function (i.e., the vari-
+ance penalized expected reward-to-go), Bellman’s optimality principle does
+not hold. As a result, it is not guaranteed that a greedy policy based on
+the latest updated value function will eventually lead to the true global op-
+timal policy. The second approach, the policy based RL, was proposed in
+Tamar et al. (2013). They also extended the work to linear function approx-
+imators and devised actor-critic algorithms for MV optimization problems
+for which convergence to the local optimum is guaranteed with probabil-
+ity one (Tamar and Mannor (2013)). Related works following this line of
+research include Prashanth and Ghavamzadeh (2013, 2016), among others.
+Despite the various methods mentioned above, it remains an open and in-
+teresting question in RL to search for the global optimum under the MV
+criterion.
+In this paper, we establish an RL framework for studying the continuous-
+time MV portfolio selection, with continuous portfolio (control/action) and
+wealth (state/feature) spaces. The continuous-time formulation is appealing
+when the rebalancing of portfolios can take place at ultra-high frequency.
+Such a formulation may also beneﬁt from the large amount of tick data that
+is available in most electronic markets nowadays. The classical continuous-
+time MV portfolio model is a spacial instance of a stochastic linear–quadratic
+(LQ) control problem (Zhou and Li (2000)). Recently, Wang et al. (2019)
+proposed and developed a general entropy-regularized, relaxed stochastic
+control formulation, called an exploratory formulation, to capture explic-
+itly the tradeoﬀbetween exploration and exploitation in RL. They showed
+that the optimal distributions of the exploratory control policies must be
+Gaussian for an LQ control problem in the inﬁnite time horizon, thereby
+3
+
+
+=== PDF PAGE 4 ===
+providing an interpretation for the Guassian exploration broadly used both
+in RL algorithm design and in practice.
+While being essentially an LQ control problem, the MV portfolio selec-
+tion must be formulated in a ﬁnite time horizon which is not covered by
+Wang et al. (2019). The ﬁrst contribution of this paper is to present the
+global optimal solution to the exploratory MV problem.
+One of the in-
+teresting ﬁndings is that, unlike its inﬁnite horizon counterpart derived in
+Wang et al. (2019), the optimal feedback control policy for the ﬁnite horizon
+case is a Gaussian distribution with a time-decaying variance. This suggests
+that the level of exploration decreases as the time approaches the end of the
+planning horizon. On the other hand, we will obtain results and observe
+insights that are parallel to those in Wang et al. (2019), such as the perfect
+separation between exploitation and exploration in the mean and variance
+of the optimal Gaussian distribution, the positive eﬀect of a random envi-
+ronment on learning, and the close connections between the classical and
+the exploratory MV problems.
+The main contribution of the paper, however, is to design an inter-
+pretable and implementable RL algorithm to learn the global optimal so-
+lution of the exploratory MV problem, premised upon a provable policy
+improvement theorem for continuous-time stochastic control problems with
+both entropy regularization and control relaxation. This theorem provides
+an explicit updating scheme for the feedback Gaussian policy, based on the
+value function of the current policy in an iterative manner. Moreover, it
+enables us to reduce from a family of general non-parametric policies to a
+speciﬁcally parametrized Gaussian family for exploration and exploitation,
+irrespective of the choice of an initial policy. This, together with a care-
+fully chosen initial Gaussian policy at the beginning of the learning process,
+guarantees the fast convergence of both the policy and the value function to
+the global optimum of the exploratory MV problem.
+We further compare our RL algorithm with two other methods applied to
+the MV portfolio optimization. The ﬁrst one is an adaptive control approach
+that adopts the real-time maximum likelihood estimation of the underlying
+model parameters. The other one is a recently developed continuous control
+RL algorithm, a deep deterministic policy gradient method (Lillicrap et al.
+(2016)) that employs deep neural networks. The comparisons are performed
+under various simulated market scenarios, including those with both sta-
+tionary and non-stationary investment opportunities. In nearly all the sim-
+ulations, our RL algorithm outperforms the other two methods by a large
+margin, in terms of both performance and training time.
+The rest of the paper is organized as follows. In Section 2, we present
+4
+
+
+=== PDF PAGE 5 ===
+the continuous-time exploratory MV problem under the entropy-regularized
+relaxed stochastic control framework. Section 3 provides the complete solu-
+tion of the exploratory MV problem, along with connections to its classical
+counterpart. We then provide the policy improvement theorem and a con-
+vergence result for the learning problem in Section 4, based on which we
+devise the RL algorithm for solving the exploratory MV problem. In Sec-
+tion 5, we compare our algorithm with two other methods in simulations
+under various market scenarios. Finally, we conclude in Section 6.
+2
+Formulation of Problem
+In this section, we formulate an exploratory, entropy-regularized Markowitz’s
+MV portfolio selection problem in continuous time, in the context of RL.
+The motivation of a general exploratory stochastic control formulation, of
+which the MV problem is a special case, was discussed at great length in a
+previous paper Wang et al. (2019); so we will frequently refer to that paper.
+2.1
+Classical continuous-time MV problem
+We ﬁrst recall the classical MV problem in continuous time (without RL).
+For ease of presentation, throughout this paper we consider an investment
+universe consisting of only one risky asset and one riskless asset. The case of
+multiple risky assets poses no essential diﬀerences or diﬃculties other than
+notational complexity.
+Let an investment planning horizon T > 0 be ﬁxed, and {Wt, 0 ≤t ≤T}
+a standard one-dimensional Brownian motion deﬁned on a ﬁltered probabil-
+ity space (Ω, F, {Ft}0≤t≤T , P) that satisﬁes the usual conditions. The price
+process of the risky asset is a geometric Brownian motion governed by
+dSt = St (µ dt + σ dWt) ,
+0 ≤t ≤T,
+(1)
+with S0 = s0 > 0 being the initial price at t = 0, and µ ∈R, σ > 0 being
+the mean and volatility parameters, respectively. The riskless asset has a
+constant interest rate r > 0. 1 The Sharpe ratio of the risky asset is deﬁned
+by ρ = µ−r
+σ .
+1In practice, the true (yet unknown) investment opportunity parameters µ, σ and
+r can be time-varying stochastic processes. Most existing quantitative ﬁnance methods
+are devoted to estimating these parameters. In contrast, RL learns the values of various
+strategies and the optimal value through exploration and exploitation, without assuming
+any statistical properties of these parameters or estimating them. But for a model-based,
+classical MV problem, we assume these parameters are constant and known. In subsequent
+contexts, all we need is the structure of the problem for our RL algorithm design.
+5
+
+
+=== PDF PAGE 6 ===
+Denote by {xu
+t , 0 ≤t ≤T} the discounted wealth process of an agent
+who rebalances her portfolio investing in the risky and riskless assets with
+a strategy u = {ut, 0 ≤t ≤T}.
+Here ut is the discounted dollar value
+put in the risky asset at time t, while satisfying the standard self-ﬁnancing
+assumption and other technical conditions that will be spelled out in details
+below. It follows from (1) that the wealth process satisﬁes
+dxu
+t = σut(ρ dt + dWt),
+0 ≤t ≤T,
+(2)
+with an initial endowment being xu
+0 = x0 ∈R.
+The classical continuous-time MV model aims to solve the following con-
+strained optimization problem
+min
+u Var[xu
+T ]
+subject to E[xu
+T ] = z,
+(3)
+where {xu
+t , 0 ≤t ≤T} satisﬁes the dynamics (2) under the investment
+strategy (portfolio) u, and z ∈R is an investment target set at t = 0 as the
+desired mean payoﬀat the end of the investment horizon [0, T].2
+Due to the variance in its objective, (3) is known to be time inconsistent.
+The problem then becomes descriptive rather than normative because there
+is generally no dynamically optimal solution for a time-inconsistent opti-
+mization problem. Agents react diﬀerently to the same time-inconsistent
+problem, and a goal of the study becomes to describe the diﬀerent behaviors
+when facing such time-inconsistency. In this paper we focus ourselves to the
+so-called pre-committed strategies of the MV problem, which are optimal at
+t = 0 only.3
+To solve (3), one ﬁrst transforms it into an unconstrained problem by
+applying a Lagrange multiplier w:4
+min
+u E[(xu
+T )2] −z2 −2w (E[xu
+T ] −z) = min
+u E[(xu
+T −w)2] −(w −z)2.
+(4)
+2The original MV problem is to ﬁnd the Pareto eﬃcient frontier for a two-objective
+(i.e. maximizing the expected terminal payoﬀand minimizing its variance) optimization
+problem.
+There are a number of equivalent mathematical formulations to ﬁnd such a
+frontier, (3) being one of them. In particular, by varying the parameter z one can trace
+out the frontier. See Zhou and Li (2000) for details.
+3For a detailed discussions about the diﬀerent behaviors under time-inconsistency, see
+the seminal paper Strotz (1955). Most of the study on continuous-time MV problem in
+literature has been devoted to pre-committed strategies; see Zhou and Li (2000); Li et al.
+(2002); Bielecki et al. (2005); Lim and Zhou (2002); Zhou and Yin (2003).
+4Strictly speaking, 2w ∈R is the Lagrange multiplier.
+6
+
+
+=== PDF PAGE 7 ===
+This problem can be solved analytically, whose solution u∗= {u∗
+t , 0 ≤t ≤T}
+depends on w. Then the original constraint E[xu∗
+T ] = z determines the value
+of w. We refer a detailed derivation to Zhou and Li (2000).
+2.2
+Exploratory continuous-time MV problem
+Given the complete knowledge of the model parameters, the classical, model-
+based MV problem (3) and many of its variants have been solved rather
+completely. When implementing these solutions, one needs to estimate the
+market parameters from historical time series of asset prices, a procedure
+known as identiﬁcation in classical adaptive control.
+However, it is well
+known that in practice it is diﬃcult to estimate the investment opportunity
+parameters, especially the mean return (aka the mean–blur problem; see,
+e.g., Luenberger (1998)) with a workable accuracy. Moreover, the classical
+optimal MV strategies are often extremely sensitive to these parameters,
+largely due to the procedure of inverting ill-conditioned variance–covariance
+matrices to obtain optimal allocation weights. In view of these two issues,
+the Markowitz solution can be greatly irrelevant to the underlying invest-
+ment objective.
+On the other hand, RL techniques do not require, and indeed often
+skip, any estimation of model parameters. Rather, RL algorithms, driven
+by historical data, output optimal (or near-optimal) allocations directly.
+This is made possible by direct interactions with the unknown investment
+environment, in a learning (exploring) while optimizing (exploiting) fashion.
+Wang et al. (2019) motivated and proposed a general theoretical framework
+for exploratory, RL stochastic control problems and carried out a detailed
+study for the special LQ case, albeit in the setting of the inﬁnite time horizon.
+We adopt the same framework here, noting the inherent features of an LQ
+structure and a ﬁnite time horizon of the MV problem. Indeed, although
+the motivation for the exploratory formulation is mostly the same, there are
+intriguing new insights emerging with this transition from the inﬁnite time
+horizon to its ﬁnite counterpart.
+First, we introduce the “exploratory” version of the state dynamics
+(2). It was originally proposed in Wang et al. (2019), motivated by repet-
+itive learning in RL. In this formulation, the control (portolio) process
+u = {ut, 0 ≤t ≤T} is randomized, which represents exploration and learn-
+ing, leading to a measure-valued or distributional control process whose
+density function is given by π = {πt, 0 ≤t ≤T}.
+The dynamics (2) is
+changed to
+dXπ
+t
+=
+˜b(πt) dt + ˜σ(πt) dWt,
+(5)
+7
+
+
+=== PDF PAGE 8 ===
+where 0 < t ≤T and Xπ
+0 = x0,
+˜b(π) :=
+Z
+R
+ρσuπ(u)du, π ∈P (R) ,
+(6)
+and
+˜σ(π) :=
+sZ
+R
+σ2u2π(u)du, π ∈P (R) ,
+(7)
+with P (R) being the set of density functions of probability measures on
+R that are absolutely continuous with respect to the Lebesgue measure.
+Mathematically, (5) coincides with the relaxed control formulation in classi-
+cal control theory. Refer to Wang et al. (2019) for a detailed discussion on
+the motivation of (5).
+Denote respectively by µt and σ2
+t , 0 ≤t ≤T, the mean and variance
+(assuming they exist for now) processes associated with the distributional
+control process π, i.e.,
+µt :=
+Z
+R
+uπt(u)du
+and
+σ2
+t :=
+Z
+R
+u2πt(u)du −µ2
+t .
+(8)
+Then, it follows immediately that the exploratory dynamics (5) become
+dXπ
+t
+=
+ρσµt dt + σ
+q
+µ2
+t + σ2
+t dWt,
+(9)
+where 0 < t ≤T and Xπ
+0 = x0. The randomized, distributional control
+process π = {πt, 0 ≤t ≤T} is to model exploration, whose overall level is
+in turn captured by its accumulative diﬀerential entropy
+H(π) := −
+Z T
+0
+Z
+R
+πt(u) ln πt(u)dudt.
+(10)
+Further, introduce a temperature parameter (or exploration weight) λ > 0
+reﬂecting the tradeoﬀbetween exploitation and exploration. The entropy-
+regularized, exploratory MV problem is then to solve, for any ﬁxed w ∈R:
+min
+π∈A(x0,0) E
+
+(Xπ
+T −w)2 + λ
+Z T
+0
+Z
+R
+πt(u) ln πt(u)dudt
+
+−(w −z)2,
+(11)
+where A(x0, 0) is the set of admissible distributional controls on [0, T] to
+be precisely deﬁned below. Once this problem is solved with a minimizer
+π∗= {π∗
+t , 0 ≤t ≤T}, the Lagrange multiplier w can be determined by the
+additional constraint E[Xπ∗
+T ] = z.
+8
+
+
+=== PDF PAGE 9 ===
+The optimization objective (11) explicitly encourages exploration, in con-
+trast to the classical problem (4) which concerns exploitation only.
+We will solve (11) by dynamic programming. For that we need to deﬁne
+the value functions. For each (s, y) ∈[0, T) × R, consider the state equation
+(9) on [s, T] with Xπ
+s = y. Deﬁne the set of admissible controls, A(s, y), as
+follows. Let B(R) be the Borel algebra on R. A (distributional) control (or
+portfolio/strategy) process π = {πt, s ≤t ≤T} belongs to A(s, y), if
+(i) for each s ≤t ≤T, πt ∈P(U) a.s.;
+(ii) for each A ∈B(R), {
+R
+A πt(u)du, s ≤t ≤T} is Ft-progressively
+measurable;
+(iii) E
+hR T
+s
+ µ2
+t + σ2
+t
+
+dt
+i
+< ∞;
+(iv) E
+h(Xπ
+T −w)2 + λ
+R T
+s
+R
+R πt(u) ln πt(u)dudt
+
+Xπ
+s = y
+i
+< ∞.
+Clearly, it follows from condition (iii) that the stochastic diﬀerential
+equation (SDE) (9) has a unique strong solution for s ≤t ≤T that satisﬁes
+Xπ
+s = y.
+Controls in A(s, y) are measure-valued (or, precisely, density-function-
+valued) stochastic processes, which are also called open-loop controls in the
+control terminology. As in the classical control theory, it is important to
+distinguish between open-loop controls and feedback (or closed-loop) con-
+trols (or policies as in the RL literature, or laws as in the control literature).
+Speciﬁcally, a deterministic mapping π(·; ·, ·) is called an (admissible) feed-
+back control if i) π(·; t, x) is a density function for each (t, x) ∈[0, T]×R; ii)
+for each (s, y) ∈[0, T)×R, the following SDE (which is the system dynamics
+after the feedback policy π(·; ·, ·) is applied)
+dXπ
+t = ˜b(π(·; t, Xπ
+t ))dt + ˜σ(π(·; t, Xπ
+t ))dWt, t ∈[s, T]; Xπ
+s = y
+(12)
+has a unique strong solution {Xπ
+t , t ∈[s, T]}, and the open-loop control
+π = {πt, t ∈[s, T]} ∈A(s, y) where πt := π(·; t, Xπ
+t ). In this case, the
+open-loop control π is said to be generated from the feedback policy π(·; ·, ·)
+with respect to the initial time and state, (s, y). It is useful to note that an
+open-loop control and its admissibility depend on the initial (s, y), whereas
+a feedback policy can generate open-loop controls for any (s, y) ∈[0, T)×R,
+and hence is in itself independent of (s, y).5
+5Throughout this paper, we use boldfaced π to denote feedback controls, and the
+normal style π to denote open-loop controls.
+9
+
+
+=== PDF PAGE 10 ===
+Now, for a ﬁxed w ∈R, deﬁne
+V (s, y; w) :=
+inf
+π∈A(s,y) E
+
+(Xπ
+T −w)2 + λ
+Z T
+0
+Z
+R
+πt(u) ln πt(u)dudt
+Xπ
+s = y
+
+−(w−z)2,
+(13)
+for (s, y) ∈[0, T) × R. The function V (·, ·; w) is called the optimal value
+function of the problem.6 Moreover, we deﬁne the value function under any
+given feedback control π:
+V π(s, y; w) = E
+
+(Xπ
+T −w)2 + λ
+Z T
+s
+Z
+R
+πt(u) ln πt(u)dudt
+Xπ
+s = y
+
+−(w−z)2,
+(14)
+for (s, y) ∈[0, T)×R, where π = {πt, t ∈[s, T]} is the open-loop control gen-
+erated from π with respect to (s, y) and {Xπ
+t , t ∈[s, T]} is the corresponding
+wealth process.
+3
+Solving Exploratory MV Problem
+In this section we ﬁrst solve the exploratory MV problem, and then establish
+solvability equivalence between the classical and exploratory problems. The
+latter is important for understanding the cost of exploration and for devising
+RL algorithms.
+3.1
+Optimality of Gaussian exploration
+To solve the exploratory MV problem (11), we apply the classical Bellman’s
+principle of optimality:
+V (t, x; w) =
+inf
+π∈A(t,x) E
+
+V (s, Xπ
+s ; w) + λ
+Z s
+t
+Z
+R
+πv(u) ln πv(u)dudv
+Xπ
+t = x
+
+,
+for x ∈R and 0 ≤t < s ≤T. Following standard arguments, we deduce
+that V satisﬁes the Hamilton-Jacobi-Bellman (HJB) equation
+vt(t, x; w)+ min
+π∈P(R)
+1
+2 ˜σ2(π)vxx(t, x; w)+˜b(π)vx(t, x; w)+λ
+Z
+R
+π(u) ln π(u)du
+
+= 0,
+(15)
+6In the control literature, V is called the value function. However, in the RL literature
+the term “value function” is also used for the objective value under a particular control.
+So to avoid ambiguity we call V the optimal value function.
+10
+
+
+=== PDF PAGE 11 ===
+or, equivalently,
+vt(t, x; w)+ min
+π∈P(R)
+Z
+R
+1
+2σ2u2vxx(t, x; w) + ρσuvx(t, x; w) + λ ln π(u)
+
+π(u)du = 0,
+(16)
+with the terminal condition v(T, x; w) = (x−w)2 −(w −z)2. Here v denotes
+the generic unknown solution to the HJB equation.
+Applying the usual veriﬁcation technique and using the fact that π ∈
+P(R) if and only if
+Z
+R
+π(u)du = 1
+and
+π(u) ≥0 a.e.
+on R,
+(17)
+we can solve the (constrained) optimization problem in the HJB equation
+(16) to obtain a feedback (distributional) control whose density function is
+given by
+π∗(u; t, x, w)
+=
+exp
+ −1
+λ
+ 1
+2σ2u2vxx(t, x; w) + ρσvx(t, x; w)
+
+R
+R exp
+ −1
+λ
+  1
+2σ2u2vxx(t, x; w) + ρσvx(t, x; w)
+
+du
+=
+N
+
+u
+ −ρ
+σ
+vx(t, x)
+vxx(t, x; w) ,
+λ
+σ2vxx(t, x; w)
+
+,
+(18)
+where we have denoted by N(u|α, β) the Gaussian density function with
+mean α ∈R and variance β > 0. In the above representation, we have
+assumed that vxx(t, x; w) > 0, which will be veriﬁed in what follows.
+Substituting the candidate optimal Gaussian feedback control policy (18)
+back into the HJB equation (16), the latter is transformed to
+vt(t, x; w) −ρ2
+2
+v2
+x(t, x; w)
+vxx(t, x, w) + λ
+2
+
+1 −ln
+2πeλ
+σ2vxx(t, x; w)
+
+= 0,
+(19)
+with v(T, x; w) = (x −w)2 −(w −z)2. A direct computation yields that this
+equation has a classical solution
+v(t, x; w) = (x−w)2e−ρ2(T−t)+λρ2
+4
+ T 2 −t2
+−λ
+2
+
+ρ2T −ln σ2
+πλ
+
+(T−t)−(w−z)2,
+(20)
+which clearly satisﬁes vxx(t, x; w) > 0, for any (t, x) ∈[0, T] × R. It then
+follows that the candidate optimal feedback Gaussian control (18) reduces
+to
+π∗(u; t, x, w) = N
+
+u
+ −ρ
+σ(x −w) ,
+λ
+2σ2 eρ2(T−t)
+
+, (t, x) ∈[0, T] × R.
+(21)
+11
+
+
+=== PDF PAGE 12 ===
+Finally, the optimal wealth process (9) under π∗becomes
+dX∗
+t = −ρ2(X∗
+t −w) dt +
+r
+ρ2 (X∗
+t −w)2 + λ
+2eρ2(T−t) dWt, X∗
+0 = x0. (22)
+It has a unique strong solution for 0 ≤t ≤T, as can be easily veriﬁed.
+We now summarize the above results in the following theorem.
+Theorem 1 The optimal value function of the entropy-regularized exploratory
+MV problem (11) is given by
+V (t, x; w) = (x−w)2e−ρ2(T−t)+λρ2
+4
+ T 2 −t2
+−λ
+2
+
+ρ2T −ln σ2
+πλ
+
+(T−t)−(w−z)2,
+(23)
+for (t, x) ∈[0, T] × R. Moreover, the optimal feedback control is Gaussian,
+with its density function given by
+π∗(u; t, x, w) = N
+
+u
+ −ρ
+σ (x −w) ,
+λ
+2σ2 eρ2(T−t)
+
+.
+(24)
+The associated optimal wealth process under π∗is the unique solution of the
+SDE
+dX∗
+t = −ρ2(X∗
+t −w) dt +
+r
+ρ2 (X∗
+t −w)2 + λ
+2eρ2(T−t) dWt, X∗
+0 = x0. (25)
+Finally, the Lagrange multiplier w is given by w = zeρ2T −x0
+eρ2T −1 .
+Proof. For each ﬁxed w ∈R, the veriﬁcation arguments aim to show that
+the optimal value function of problem (11) is given by (23) and that the
+candidate optimal policy (24) is indeed admissible. A detailed proof follows
+the same lines of that of Theorem 4 in Wang et al. (2019), and is left for
+interested readers.
+We now determine the Lagrange multiplier w through the constraint
+E[X∗
+T ] = z.
+It follows from (25), along with the standard estimate that
+E
+
+maxt∈[0,T](X∗
+t )2
+< ∞and Fubini’s Theorem, that
+E[X∗
+t ] = x0 + E
+Z t
+0
+−ρ2(X∗
+s −w) ds
+
+= x0 +
+Z t
+0
+−ρ2 (E[X∗
+s ] −w) ds.
+Hence, E[X∗
+t ] = (x0 −w)e−ρ2t + w. The constraint E[X∗
+T ] = z now becomes
+(x0 −w)e−ρ2T + w = z, which gives w = zeρ2T −x0
+eρ2T −1 .
+12
+
+
+=== PDF PAGE 13 ===
+There are several interesting points to note in this result. First of all,
+it follows from Theorem 2 in the next section that the classical and the
+exploratory MV problems have the same Lagrange multiplier value due to
+the fact that the optimal terminal wealths under the respective optimal
+feedback controls of the two problems turn out to have the same mean.7
+This latter result is rather surprising at ﬁrst sight because the exploration
+greatly alters the underlying system dynamics (compare the dynamics (2)
+with (9)).
+Second, the variance of the optimal Gaussian policy, which measures the
+level of exploration, is
+λ
+2σ2 eρ2(T−t) at time t. So the exploration decays in
+time: the agent initially engages in exploration at the maximum level, and
+reduces it gradually (although never to zero) as time passes and approaches
+the end of the investment horizon. Hence, diﬀerent from its inﬁnite horizon
+counterpart studied in Wang et al. (2019), the extent of exploration is no
+longer constant, but, rather, annealing. This is intuitive because, as the
+RL agent learns more about the random environment as time passes, the
+exploitation becomes more important since there is a deadline T at which her
+actions will be evaluated. Naturally, exploitation dominates exploration as
+time approaches maturity. Theorem 1 presents such a decaying exploration
+scheme endogenously which, to our best knowledge, has not been derived in
+the RL literature.
+Third, as already noted in Wang et al. (2019), at any given t ∈[0, T], the
+variance of the exploratory Gaussian distribution decreases as the volatility
+of the risky asset increases, with other parameters being ﬁxed. The volatility
+of the risky asset reﬂects the level of randomness of the investment universe.
+This hints that a more random environment contains more learning oppor-
+tunities, which the RL agent can leverage to reduce her own exploratory
+endeavor because, after all, exploration is costly.
+Finally, the mean of the Gaussian distribution (24) is independent of the
+exploration weight λ, while its variance is independent of the state x. This
+highlights a perfect separation between exploitation and exploration, as the
+former is captured by the mean and the latter by the variance of the optimal
+Gaussian exploration. This property is also consistent with the LQ case in
+the inﬁnite horizon studied in Wang et al. (2019).
+7Theorem 2 is a reproduction of the results on the classical MV problem obtained in
+Zhou and Li (2000).
+13
+
+
+=== PDF PAGE 14 ===
+3.2
+Solvability equivalence between classical and exploratory
+MV problems
+In this section, we establish the solvability equivalence between the classi-
+cal and the exploratory, entropy-regularized MV problems. Note that both
+problems can be and indeed have been solved separately and independently.
+Here by “solvability equivalence” we mean that the solution of one problem
+will lead to that of the other directly, without needing to solve it separately.
+This equivalence was ﬁrst discovered in Wang et al. (2019) for the inﬁnite
+horizon LQ case, and was shown to be instrumental in deriving the conver-
+gence result (when the exploration weight λ decays to 0) as well as analyzing
+the exploration cost therein. Here, the discussions are mostly parallel; so
+they will be brief.
+Recall the classical MV problem (4). In order to apply dynamic pro-
+gramming, we again consider the set of admissible controls, Acl(s, y), for
+(s, y) ∈[0, T) × R,
+Acl(s, y) :=
+n
+u = {ut, t ∈[s, T]}: u is Ft-progressively measurable and
+E[
+R T
+s (us)2 ds] < ∞
+o
+.
+The (optimal) value function is deﬁned by
+V cl(s, y; w) :=
+inf
+u∈Acl(s,y) E
+
+(xu
+T −w)2  xu
+s = y
+
+−(w −z)2,
+(26)
+for (s, y) ∈[0, T) × R, where w ∈R is ﬁxed. Once this problem is solved, w
+can be determined by the constraint E[x∗
+T ] = z, with {x∗
+t , t ∈[0, T]} being
+the optimal wealth process under the optimal portfolio u∗.
+The HJB equation is
+ωt(t, x; w)+min
+u∈R
+1
+2σ2u2ωxx(t, x; w) + ρσu ωx(t, x; w)
+
+= 0, (t, x) ∈[0, T)×R,
+(27)
+with the terminal condition ω(T, x; w) = (x −w)2 −(w −z)2.
+Standard veriﬁcation arguments deduce the optimal value function to be
+V cl(t, x; w) = (x −w)2e−ρ2(T−t) −(w −z)2,
+the optimal feedback control policy to be
+u∗(u; t, x, w) = −ρ
+σ(x −w),
+(28)
+14
+
+
+=== PDF PAGE 15 ===
+and the corresponding optimal wealth process to be the unique strong solu-
+tion to the SDE
+dx∗
+t = −ρ2(x∗
+t −w) dt −ρ(x∗
+t −w) dWt,
+x∗
+0 = x0.
+(29)
+Comparing the optimal wealth dynamics, (25) and (29), of the exploratory
+and classical problems, we note that they have the same drift coeﬃcient (but
+diﬀerent diﬀusion coeﬃcients). As a result, the two problems have the same
+mean of optimal terminal wealth and hence the same value of the Lagrange
+multiplier w = zeρ2T −x0
+eρ2T −1
+determined by the constraint E[x∗
+T ] = z.
+We now provide the solvability equivalence between the two problems.
+The proof is very similar to that of Theorem 7 in Wang et al. (2019), and is
+thus omitted.
+Theorem 2 The following two statements (a) and (b) are equivalent.
+(a) The function v(t, x; w) = (x−w)2e−ρ2(T−t)+ λρ2
+4
+ T 2 −t2
+−λ
+2
+
+ρ2T −ln σ2
+πλ
+
+(T−
+t) −(w −z)2, (t, x) ∈[0, T] × R, is the optimal value function of the
+exploratory MV problem (11), and the corresponding optimal feedback
+control is
+π∗(u; t, x, w) = N
+
+u
+ −ρ
+σ(x −w) ,
+λ
+2σ2 eρ2(T−t)
+
+.
+(b) The function ω(t, x; w) = (x−w)2e−ρ2(T−t)−(w−z)2, (t, x) ∈[0, T]×R,
+is the optimal value function of the classical MV problem (26), and the
+corresponding optimal feedback control is
+u∗(t, x; w) = −ρ
+σ(x −w).
+Moreover, the two problems have the same Lagrange multiplier w = zeρ2T −x0
+eρ2T −1 .
+It is reasonable to expect that the exploratory problem converges to
+its classical counterpart as the exploration weight λ decreases to 0. The
+following result makes this precise.
+Theorem 3 Assume that statement (a) (or equivalently, (b)) of Theorem
+2 holds. Then, for each (t, x, w) ∈[0, T] × R × R,
+lim
+λ→0 π∗(·; t, x; w) = δu∗(t,x;w)(·)
+weakly.
+Moreover,
+lim
+λ→0 |V (t, x; w) −V cl(t, x; w)| = 0.
+15
+
+
+=== PDF PAGE 16 ===
+Proof.
+The weak convergence of the feedback controls follows from the
+explicit forms of π∗and u∗in statements (a) and (b). The pointwise con-
+vergence of the value functions follows easily from the forms of V (·) and
+V cl(·), together with the fact that
+lim
+λ→0
+λ
+2 ln σ2
+πλ = 0.
+Finally, we conclude this section by examining the cost of the exploration.
+This was originally deﬁned and derived in Wang et al. (2019) for the inﬁnite
+horizon setting. Here, the cost associated with the MV problem due to the
+explicit inclusion of exploration in the objective (11) is deﬁned by
+Cu∗,π∗(0, x0; w) :=
+
+V (0, x0; w) −λE
+Z T
+0
+Z
+R
+π∗
+t (u) ln π∗
+t (u)du dt
+ Xπ∗
+0
+= x0
+
+−V cl(0, x0; w),
+(30)
+for x0 ∈R, where π∗= {π∗
+t , t ∈[0, T]} is the (open-loop) optimal strategy
+generated by the optimal feedback law π∗with respect to the initial condi-
+tion Xπ∗
+0
+= x0. This cost is the diﬀerence between the two optimal value
+functions, adjusting for the additional contribution due to the entropy value
+of the optimal exploratory strategy.
+Making use of Theorem 2, we have the following result.
+Theorem 4 Assume that statement (a) (or equivalently, (b)) of Theorem
+2 holds. Then, the exploration cost for the MV problem is
+Cu∗,π∗(0, x0; w) = λT
+2 , x0 ∈R, w ∈R.
+(31)
+Proof. Let {π∗
+t , t ∈[0, T]} be the open-loop control generated by the feed-
+back control π∗given in statement (a) with respect to the initial state x0
+at t = 0, namely,
+π∗
+t (u) = N
+
+u
+ −ρ
+σ(X∗
+t −w) ,
+λ
+2σ2 eρ2(T−t)
+
+where {X∗
+t , t ∈[0, T]} is the corresponding optimal wealth process of the
+exploratory MV problem, starting from the state x0 at t = 0, when π∗is
+applied. Then, we easily deduce that
+Z
+R
+π∗
+t (u) ln π∗
+t (u)du = −1
+2 ln
+πeλ
+σ2 eρ2(T−t)
+
+.
+16
+
+
+=== PDF PAGE 17 ===
+The desired result now follows immediately from the expressions of V (·) in
+(a) and V cl(·) in (b).
+The exploration cost depends only on two “agent-speciﬁc” parameters,
+the exploration weight λ > 0 and the investment horizon T > 0.
+Note
+that the latter is also the exploration horizon.
+Our result is intuitive in
+that the exploration cost increases with the exploration weight and with the
+exploration horizon. Indeed, the dependence is linear with respect to each
+of the two attributes: λ and T.8 It is also interesting to note that the cost is
+independent of the Lagrange multiplier. This suggests that the exploration
+cost will not increase when the agent is more aggressive (or risk-seeking) –
+reﬂected by the expected target z or equivalently the Lagrange multiplier
+w.
+4
+RL Algorithm Design
+Having laid the theoretical foundation in the previous two sections, we now
+design an RL algorithm to learn the solution of the entropy-regularized MV
+problem and to output implementable portfolio allocation strategies, with-
+out assuming any knowledge about the underlying parameters.
+To this
+end, we will ﬁrst establish a so-called policy improvement theorem as well
+as the corresponding convergence result. Meanwhile, we will provide a self-
+correcting scheme to learn the true Lagrange multiplier w, based on stochas-
+tic approximation.
+Our RL algorithm bypasses the phase of estimating
+any model parameters, including the mean return vector and the variance-
+covariance matrix. It also avoids inverting a typically ill-conditioned variance-
+covariance matrix in high dimensions that would likely produce non-robust
+portfolio strategies.
+In this paper, rather than relying on the typical framework of discrete-
+time MDP (that is used for most RL problems) and discretizing time and
+space accordingly, we design an algorithm to learn the solutions of the
+continuous-time exploratory MV problem (11) directly.
+Speciﬁcally, we
+adopt the approach developed in Doya (2000) to avoid discretization of the
+state dynamics or the HJB equation.
+As pointed out in Doya (2000), it
+is typically challenging to ﬁnd the right granularity to discretize the state,
+action and time, and naive discretization may lead to poor performance. On
+8In Wang et al. (2019) with the inﬁnite horizon LQ case, an analogous result is ob-
+tained which states that exploration cost is proportional to the exploration weight and
+inversely proportional to the discount factor. Clearly, here the length of time horizon, T ,
+plays a role similar to the inverse of the discount factor.
+17
+
+
+=== PDF PAGE 18 ===
+the other hand, grid-based discretization methods for solving the HJB equa-
+tion cannot be easily extended to high-dimensional state space in practice
+due to the curse of dimensionality, although theoretical convergence results
+have been established (see Munos and Bourgine (1998); Munos (2000)). Our
+algorithm, to be described in Subsection 4.2, however, makes use of a prov-
+able policy improvement theorem and fairly simple yet eﬃcient functional
+approximations to directly learn the value functions and the optimal Gaus-
+sian policy. Moreover, it is computationally feasible and implementable in
+high-dimensional state spaces (i.e., in the case of a large number of risky
+assets) due to the explicit representation of the value functions and the
+portfolio strategies, thereby devoid of the curse of dimensionality.
+Note
+that our algorithm does not use (deep) neural networks, which have been
+applied extensively in literature for (high-dimensional) continuous RL prob-
+lems (e.g., Lillicrap et al. (2016), Mnih et al. (2015)) but known for unstable
+performance, sample ineﬃciency as well as extensive hyperparameter tuning
+(Mnih et al. (2015)), in addition to their low interpretability.9
+4.1
+A policy improvement theorem
+Most RL algorithms consist of two iterative procedures: policy evaluation
+and policy improvement (Sutton and Barto (2018)). The former provides an
+estimated value function for the current policy, whereas the latter updates
+the current policy in the right direction to improve the value function. A
+policy improvement theorem (PIT) is therefore a crucial prerequisite for
+interpretable RL algorithms that ensures the iterated value functions to
+be non-increasing (in the case of a minimization problem), and ultimately
+converge to the optimal value function; see, for example, Section 4.2 of
+Sutton and Barto (2018). PITs have been proved for discrete-time entropy-
+regularized RL problems in inﬁnite horizon (Haarnoja et al. (2017)), and for
+continuous-time classical stochastic control problems (Jacka and Mijatovi´c
+(2017)).10
+The following result provides a PIT for our exploratory MV
+portfolio selection problem.
+Theorem 5 (Policy Improvement Theorem) Let w ∈R be ﬁxed and
+π = π(·; ·, ·, w) be an arbitrarily given admissible feedback control policy.
+9Interpretability is one of the most important and pressing issues in the general arti-
+ﬁcial intelligence applications in ﬁnancial industry due to, among others, the regulatory
+requirement.
+10Jacka and Mijatovi´c (2017) studied classical stochastic control problems with no dis-
+tributional controls nor entropy regularization.
+They did not consider RL and related
+issues including exploration.
+18
+
+
+=== PDF PAGE 19 ===
+Suppose that the corresponding value function V π(·, ·; w) ∈C1,2([0, T) ×
+R) ∩C0([0, T] × R) and satisﬁes V π
+xx(t, x; w) > 0, for any (t, x) ∈[0, T) × R.
+Suppose further that the feedback policy ˜π deﬁned by
+˜π(u; t, x, w) = N
+
+u
+ −ρ
+σ
+V π
+x (t, x; w)
+V π
+xx(t, x; w) ,
+λ
+σ2V π
+xx(t, x; w)
+
+(32)
+is admissible. Then,
+V ˜π(t, x; w) ≤V π(t, x; w),
+(t, x) ∈[0, T] × R.
+(33)
+Proof. Fix (t, x) ∈[0, T] × R. Since, by assumption, the feedback policy ˜π
+is admissible, the open-loop control strategy, ˜π = {˜πv, v ∈[t, T]}, generated
+from ˜π with respect to the initial condition X ˜π
+t
+= x is admissible.
+Let
+{X ˜π
+s , s ∈[t, T]} be the corresponding wealth process under ˜π. Applying
+Itˆo’s formula, we have
+V π(s, ˜Xs) = V π(t, x) +
+Z s
+t
+V π
+t (v, X ˜π
+v )dv +
+Z s
+t
+Z
+R
+1
+2σ2u2V π
+xx(v, X ˜π
+v )
++ρσuV π
+x (v, X ˜π
+v )
+
+˜πv(u) dudv+
+Z s
+t
+σ
+Z
+R
+u2˜πv(u)du
+ 1
+2
+V π(v, X ˜π
+v ) dWv, s ∈[t, T].
+(34)
+Deﬁne the stopping times τn := inf{s ≥t :
+R s
+t σ2 R
+R u2˜πv(u)du
+ V π(v, X ˜π
+v )
+2 dv ≥
+n}, for n ≥1. Then, from (34), we obtain
+V π(t, x) = E
+h
+V π(s ∧τn, X ˜π
+s∧τn) −
+Z s∧τn
+t
+V π
+t (v, X ˜π
+v )dv
+−
+Z s∧τn
+t
+Z
+R
+1
+2σ2u2V π
+xx(v, X ˜π
+v ) + ρσuV π
+x (v, X ˜π
+v )
+
+˜πv(u) dudv
+X ˜π
+t = x
+i
+.
+(35)
+On the other hand, by standard arguments and the assumption that V π is
+smooth, we have
+V π
+t (t, x)+
+Z
+R
+1
+2σ2u2V π
+xx(t, x) + ρσuV π
+x (t, x) + λ ln π(u; t, x)
+
+π(u; t, x)du = 0,
+for any (t, x) ∈[0, T) × R. It follows that
+V π
+t (t, x)+ min
+π′∈P(R)
+Z
+R
+1
+2σ2u2V π
+xx(t, x) + ρσuV π
+x (t, x) + λ ln π′(u)
+
+π′(u)du ≤0.
+(36)
+19
+
+
+=== PDF PAGE 20 ===
+Notice that the minimizer of the Hamiltonian in (36) is given by the feedback
+policy ˜π in (32). It then follows that equation (35) implies
+V π(t, x) ≥E
+h
+V π(s ∧τn, X ˜π
+s∧τn) + λ
+Z s∧τn
+t
+Z
+R
+˜πv(u) ln ˜πv(u) dudv
+X ˜π
+t = x
+i
+,
+for (t, x) ∈[0, T] × R and s ∈[t, T]. Now taking s = T, and using that
+V π(T, x) = V ˜π(T, x) = (x−w)2−(w−z)2 together with the assumption that
+˜π is admissible, we obtain, by sending n →∞and applying the dominated
+convergence theorem, that
+V π(t, x) ≥E
+h
+V ˜π(T, X ˜π
+T )+λ
+Z T
+t
+Z
+R
+˜πv(u) ln ˜πv(u) dudv
+X ˜π
+t = x
+i
+= V ˜π(t, x),
+for any (t, x) ∈[0, T] × R.
+The above theorem suggests that there are always policies in the Gaus-
+sian family that improves the value function of any given, not necessarily
+Gaussian, policy.
+Hence, without loss of generality, we can simply focus
+on the Gaussian policies when choosing an initial solution. Moreover, the
+optimal Gaussian policy (24) in Theorem 1 suggests that a candidate initial
+feedback policy may take the form π0(u; t, x, w) = N(u|a(x−w), c1ec2(T−t)).
+It turns out that, theoretically, such a choice leads to the convergence of both
+the value functions and the policies in a ﬁnite number of iterations.
+Theorem 6 Let π0(u; t, x, w) = N(u|a(x −w), c1ec2(T−t)), with a, c2 ∈R
+and c1 > 0. Denote by {πn(u; t, x, w), (t, x) ∈[0, T]×R, n ≥1} the sequence
+of feedback policies updated by the policy improvement scheme (32), and
+{V πn(t, x; w), (t, x) ∈[0, T] × R, n ≥1} the sequence of the corresponding
+value functions. Then,
+lim
+n→∞πn(·; t, x, w) = π∗(·; t, x, w)
+weakly,
+(37)
+and
+lim
+n→∞V πn(t, x; w) = V (t, x; w),
+(38)
+for any (t, x, w) ∈[0, T] × R × R, where π∗and V are the optimal Gaussian
+policy (24) and the optimal value function (23), respectively.
+Proof. It can be easily veriﬁed that the feedback policy π0 where π0(u; t, x, w) =
+N(u|a(x−w), c1ec2(T−t)) generates an open-loop policy π0 that is admissible
+20
+
+
+=== PDF PAGE 21 ===
+with respect to the initial (t, x). Moreover, it follows from the Feynman-Kac
+formula that the corresponding value function V π0 satisﬁes the PDE
+V π0
+t
+(t, x; w) +
+Z
+R
+1
+2σ2u2V π0
+xx (t, x; w) + ρσuV π0
+x (t, x; w)
++ λ ln π0(u; t, x, w)
+
+π0(u; t, x, w)du = 0,
+(39)
+with terminal condition V π0(T, x; w) = (x −w)2 −(w −z)2. Solving this
+equation we obtain
+V π0(t, x; w) = (x −w)2e(2ρσa+σ2a2)(T−t) +
+Z T
+t
+c1σ2e(2ρσa+σ2a2+c2)(T−s)ds
++ λc2
+4 (T −t)2 + λ ln(2πec1)
+2
+(T −t) −(w −z)2.
+(40)
+It is easy to check that V π0 satisﬁes the conditions in Theorem 5 and, hence,
+the theorem applies. The improved policy is given by (32), which, in the
+current case, becomes
+π1(u; t, x, w) = N
+
+u
+ −ρ
+σ(x −w) ,
+λ
+2σ2e(2ρσa+σ2a2)(T−t)
+
+.
+Again, we can calculate the corresponding value function as V π1(t, x; w) =
+(x −w)2e−ρ2(T−t) + F1(t), where F1 is a function of t only. Theorem 5 is
+applicable again, which yields the improved policy π2 as exactly the optimal
+Gaussian policy π∗given in (24), together with the optimal value function
+V in (23). The desired convergence therefore follows, as for n ≥2, both
+the policy and the value function will no longer strictly improve under the
+policy improvement scheme (32).
+The above convergence result shows that if we choose the initial policy
+wisely, the learning scheme will, theoretically, converge after a ﬁnite num-
+ber of (two, in fact) iterations. When implementing this scheme in prac-
+tice, of course, the value function for each policy can only be approximated
+and, hence, the learning process typically takes more iterations to converge.
+Nevertheless, Theorem 5 provides the theoretical foundation for updating a
+current policy, while Theorem 6 suggests a good starting point in the policy
+space. We will make use of both results in the next subsection to design an
+implementable RL algorithm for the exploratory MV problem.
+21
+
+
+=== PDF PAGE 22 ===
+4.2
+The EMV algorithm
+In this section, we present an RL algorithm, the EMV (exploratory mean–
+variance) algorithm, to solve (11). It consists of three concurrently ongo-
+ing procedures: the policy evaluation, the policy improvement and a self-
+correcting scheme for learning the Lagrange multiplier w based on stochastic
+approximation.
+For the policy evaluation, we follow the method employed in Doya (2000)
+for learning the value function V π under any arbitrarily given admissible
+feedback policy π. By Bellman’s consistency, we have
+V π(t, x) = E
+
+V π(s, Xs) + λ
+Z s
+t
+Z
+R
+πv(u) ln πv(u)dudv
+Xt = x
+
+, s ∈[t, T],
+(41)
+for (t, x) ∈[0, T] × R. Rearranging this equation and dividing both sides by
+s −t, we obtain
+E
+V π(s, Xs) −V π(t, Xt)
+s −t
++
+λ
+s −t
+Z s
+t
+Z
+R
+πv(u) ln πv(u)dudv
+Xt = x
+
+= 0.
+Taking s →t gives rise to the continuous-time Bellman’s error (or the tem-
+proral diﬀerence (TD) error; see Doya (2000))
+δt := ˙V π
+t + λ
+Z
+R
+πt(u) ln πt(u)du,
+(42)
+where ˙V π
+t
+= V π(t+∆t,Xt+∆t)−V π(t,Xt)
+∆t
+is the total derivative and ∆t is the
+discretization step for the learning algorithm.
+The objective of the policy evaluation procedure is to minimize the Bell-
+man’s error δt. In general, this can be carried out as follows. Denote by V θ
+and πφ respectively the parametrized value function and policy (upon using
+regressions or neural networks, or making use of some of the structures of
+the problem; see below), with θ, φ being the vector of weights to be learned.
+We then minimize
+C(θ, φ) = 1
+2E
+Z T
+0
+|δt|2dt
+
+= 1
+2E
+Z T
+0
+ ˙V θ
+t + λ
+Z
+R
+πφ
+t (u) ln πφ
+t (u)du
+2dt
+
+,
+where πφ = {πφ
+t , t ∈[0, T]} is generated from πφ with respect to a given
+initial state X0 = x0 at time 0. To approximate C(θ, φ) in an implementable
+algorithm, we ﬁrst discretize [0, T] into small equal-length intervals [ti, ti+1],
+i = 0, 1, · · · , l, where t0 = 0 and tl+1 = T. Then we collect a set of samples
+22
+
+
+=== PDF PAGE 23 ===
+D = {(ti, xi), i = 0, 1, · · · , l + 1} in the following way. The initial sample is
+(0, x0) for i = 0. Now, at each ti, i = 0, 1, · · · , l, we sample πφ
+ti to obtain an
+allocation ui ∈R in the risky asset, and then observe the wealth xi+1 at the
+next time instant ti+1. We can now approximate C(θ, φ) by
+C(θ, φ) = 1
+2
+X
+(ti,xi)∈D
+
+˙V θ(ti, xi) + λ
+Z
+R
+πφ
+ti(u) ln πφ
+ti(u)du
+2
+∆t.
+(43)
+Instead of following the common practice to represent V θ, πφ using
+(deep) neural networks for continuous RL problems, in this paper we will
+take advantage of the more explicit parametric expressions obtained in The-
+orem 1 and Theorem 6. This will lead to faster learning and convergence,
+which will be demonstrated in all the numerical experiments below. More
+precisely, by virtue of Theorem 6, we will focus on Gaussian policies with
+variance taking the form c1ec2(T−t), which in turn leads to the entropy
+parametrized by H(πφ
+t ) = φ1 + φ2(T −t), where φ = (φ1, φ2)′, with φ1 ∈R
+and φ2 > 0, is the parameter vector to be learned.
+On the other hand, as suggested by the theoretical optimal value func-
+tion (23) in Theorem 1, we consider the parameterized V θ, where θ =
+(θ0, θ1, θ2, θ3)′, by
+V θ(t, x) = (x −w)2e−θ3(T−t) + θ2t2 + θ1t + θ0, (t, x) ∈[0, T] × R.
+(44)
+From the policy improvement updating scheme (32), it follows that the
+variance of the policy πφ
+t is
+λ
+2σ2 eθ3(T−t), resulting in the entropy 1
+2 ln πeλ
+σ2 +
+θ3
+2 (T −t). Equating this with the previously derived form H(πφ
+t ) = φ1 +
+φ2(T −t), we deduce
+σ2 = λπe1−2φ1
+and
+θ3 = 2φ2 = ρ2.
+(45)
+The improved policy, in turn, becomes, according to (32), that
+π(u; t, x, w) = N
+
+u
+ −ρ
+σ(x −w) ,
+λ
+2σ2 eθ3(T−t)
+
+= N
+ 
+u
+ −
+r
+2φ2
+λπ e
+2φ1−1
+2
+(x −w) ,
+1
+2π e2φ2(T−t)+2φ1−1
+!
+,
+(46)
+where we have assumed that the true (unknown) Sharpe ratio ρ > 0.
+Rewriting the objective (43) using H(πφ
+t ) = φ1 + φ2(T −t), we obtain
+C(θ, φ) = 1
+2
+X
+(ti,xi)∈D
+
+˙V θ(ti, xi) −λ(φ1 + φ2(T −t))
+2
+∆t.
+23
+
+
+=== PDF PAGE 24 ===
+Note that ˙V θ(ti, xi) = V θ(ti+1,xi+1)−V θ(ti,xi)
+∆t
+, with θ3 = 2φ2 in the parametriza-
+tion of V θ(ti, xi). It is now straightforward to devise the updating rules for
+(θ1, θ2)′ and (φ1, φ2)′ using stochastic gradient descent algorithms (see, for
+example, Chapter 8 of Goodfellow et al. (2016)). Precisely, we compute
+∂C
+∂θ1
+=
+X
+(ti,xi)∈D
+
+˙V θ(ti, xi) −λ(φ1 + φ2(T −ti))
+
+∆t;
+(47)
+∂C
+∂θ2
+=
+X
+(ti,xi)∈D
+
+˙V θ(ti, xi) −λ(φ1 + φ2(T −ti))
+
+(t2
+i+1 −t2
+i );
+(48)
+∂C
+∂φ1
+= −λ
+X
+(ti,xi)∈D
+
+˙V θ(ti, xi) −λ(φ1 + φ2(T −ti))
+
+∆t;
+(49)
+∂C
+∂φ2
+=
+X
+(ti,xi)∈D
+
+˙V θ(ti, xi) −λ(φ1 + φ2(T −ti))
+
+∆t
+×
+ 
+−2(xi+1 −w)2e−2φ2(T−ti+1)(T −ti+1) −2(xi −w)2e−2φ2(T−ti)(T −ti)
+∆t
+−λ(T −ti)
+!
+.
+(50)
+Moreover, the parameter θ3 is updated with θ3 = 2φ2, and θ0 is updated
+based on the terminal condition V θ(T, x; w) = (x −w)2 −(w −z)2, which
+yields
+θ0 = −θ2T 2 −θ1T −(w −z)2.
+(51)
+Finally, we provide a scheme for learning the underlying Lagrange mul-
+tiplier w.
+Indeed, the constraint E[XT ] = z itself suggests the standard
+stochastic approximation update
+wn+1 = wn −αn(XT −z),
+(52)
+with αn > 0, n ≥1, being the learning rate. In implementation, we can
+replace XT in (52) by a sample average
+1
+N
+P
+j xj
+T to have a more stable
+learning process (see, for example, Section 1.1 of Kushner and Yin (2003)),
+where N ≥1 is the sample size and xj
+T ’s are the most recent N terminal
+wealth values obtained at the time when w is to be updated. It is interesting
+to notice that the learning scheme of w, (52), is statistically self-correcting.
+For example, if the (sample average) terminal wealth is above the target z,
+the updating rule (52) will decrease w, which in turn decreases the mean
+of the exploratory Gaussian policy π in view of (46).
+This implies that
+24
+
+
+=== PDF PAGE 25 ===
+there will be less risky allocation in the next step of actions for learning and
+optimizing, leading to, on average, a decreased terminal wealth.11
+We now summarize the pseudocode for the EMV algorithm.
+Algorithm 1 EMV: Exploratory Mean-Variance Portfolio Selection
+Input: Market Simulator Market, learning rates α, ηθ, ηφ, initial wealth
+x0, target payoﬀz, investment horizon T, discretization ∆t, exploration
+rate λ, number of iterations M, sample average size N.
+Initialize θ, φ and w
+for k = 1 to M do
+for i = 1 to ⌊T
+∆t⌋do
+Sample (tk
+i , xk
+i ) from Market under πφ
+Obtain collected samples D = {(tk
+i , xk
+i ), 1 ≤i ≤⌊T
+∆t⌋}
+Update θ ←θ −ηθ∇θC(θ, φ) using (47) and (48)
+Update θ0 using (51) and θ3 ←2φ2
+Update φ ←φ −ηφ∇φC(θ, φ) using (49) and (50)
+end for
+Update πφ ←N
+
+u
+ −
+q
+2φ2
+λπ e
+2φ1−1
+2
+(x −w) ,
+1
+2πe2φ2(T−t)+2φ1−1
+
+if k mod N == 0
+Update w ←w −α
+
+1
+N
+Pk
+j=k−N+1 xj
+⌊T
+∆t ⌋−z
+
+end if
+end for
+5
+Simulation Results
+In this section, we compare the performance of our RL algorithm EMV with
+two other methods that could be used to solve the classical MV problem
+(3). The ﬁrst one is the traditional maximum likelihood estimation (MLE)
+that relies on the real-time estimation of the drift µ and the volatility σ
+in the geometric Brownian motion price model (1). Once the estimators of
+µ and σ are available using the most recent price time series, the portfolio
+allocation can be computed using the optimal allocation (28) for the classical
+MV problem. Another alternative is based on the deep deterministic policy
+gradient (DDPG) method developed by Lillicrap et al. (2016), a method
+11This discussion here is based on the assumption that the market has a positive Sharpe
+ratio (recall (46)). The case of a negative Sharpe ratio can be dealt with similarly.
+25
+
+
+=== PDF PAGE 26 ===
+that has been taken as the baseline approach for comparisons of diﬀerent
+RL algorithms that solve continuous control problems.
+We conduct comparisons in various simulation settings, including the
+stationary setting where the price of the risky asset evolves according to the
+geometric Brownian motion (1) and the non-stationary setting that involves
+stochastic factor modeling for the drift and volatility parameters. We also
+consider a time-decreasing exploration case which can be easily accommo-
+dated by the EMV through an annealing λ across all the episodes [0, T] in
+the learning process. In nearly all of the experiments, our EMV algorithm
+outperforms the other two methods by large margins.
+In the following, we brieﬂy describe the two other methods.
+Maximum likelihood estimation (MLE)
+The MLE is a popular method for estimating the parameters µ and σ in
+the geometric Brownian motion model (1). We refer the interested readers
+to Section 9.3.2 of Campbell et al. (1997) for a detailed description of this
+method. At each decision making time ti, the MLE estimators for µ and σ
+are calculated based on the most recent 100 data points of the price. One
+can then substitute the MLE estimators into the optimal allocation (28)
+and the expression of the Lagrange multiplier w =
+zeρ2T −x0
+eρ2T −1
+to compute
+the allocation ui ∈R in the risky asset.
+Such a two-phase procedure is
+commonly used in adaptive control, where the ﬁrst phase is identiﬁcation
+and the second one is optimization (see, for example, Chen and Guo (2012),
+Kumar and Varaiya (2015)). The real-time estimation procedure also allows
+the MLE to be applicable in non-stationary markets with time-varying µ and
+σ.
+Deep deterministic policy gradient (DDPG)
+The DDPG method has attracted signiﬁcant attention since it was intro-
+duced in Lillicrap et al. (2016). It has been taken as a state-of-the-art base-
+line approach for continuous control (action) RL problems, albeit in discrete
+time. The DDPG learns a deterministic target policy using deep neural net-
+works for both the critic and the actor, with exogenous noise being added to
+encourage exploration (e.g. using OU processes; see Lillicrap et al. (2016)
+for details). To adapt the DDPG to the classical MV setting (without en-
+tropy regularization), we make the following adjustments. Since the target
+policy we aim to learn is a deterministic function of (x−w) (see (28)), we will
+feed the samples xi−w, rather than only xi, to the actor network in order to
+output the allocation ui ∈R. Here, w is the learned Lagrange multiplier at
+the decision making time ti, obtained from the same self-correcting scheme
+26
+
+
+=== PDF PAGE 27 ===
+(52). This modiﬁcation also enables us to connect current allocation with the
+previously obtained sample average of terminal wealth in a feedback loop,
+through the Lagrange multiplier w. Another modiﬁcation from the orig-
+inal DDPG is that we include prioritized experience replay (Schaul et al.
+(2016)), rather than sampling experience uniformly from the replay buﬀer.
+We select the terminal experience with higher probability to train the critic
+and actor networks, to account for the fact that the MV problem has no
+running cost, but only a terminal cost given by (xT −w)2 −(w −z) (cf. (4)).
+Such a modiﬁcation signiﬁcantly improves learning speed and performance.
+5.1
+The stationary market case
+We ﬁrst perform numerical simulations in a stationary market environment,
+where the price process is simulated according to the geometric Brownian
+motion (1) with constant µ and σ.
+We take T = 1 and ∆t =
+1
+252, in-
+dicating that the MV problem is considered over a one-year period, with
+daily rebalancing. Reasonable values of the annualized return and volatility
+will be taken from the sets µ ∈{−50%, −30%, −10%, 0%, 10%, 30%, 50%}
+and σ ∈{10%, 20%, 30%, 40%}, respectively.
+These values are usually
+considered for a “typical” stock for simulation purpose (see, for exam-
+ple, Hutchinson et al. (1994)). The annualized interest rate is taken to be
+r = 2%. We consider the MV problem with a 40% annualized target return
+on the terminal wealth starting from a normalized initial wealth x0 = 1
+and, hence, z = 1.4 in (3). These model parameters will be ﬁxed for all the
+simulations considered in this paper.
+For the EMV algorithm, we take the total training episodes M = 20000
+and the sample size N = 10 for learning the Lagrange multiplier w. The
+temperature parameter λ = 2. Across all the simulations in this section, the
+learning rates are ﬁxed as α = 0.05 and ηθ = ηφ = 0.0005.
+We choose the same M and N for the DDPG algorithm for a fair com-
+parison. The critic network has 3 hidden layers with 10, 8, 8 hidden units
+for each layer, and the actor network has 2 hidden layers with 10, 8 hidden
+units. The learning rates for the critic and actor are 0.0001, ﬁxed across
+all simulations in this section as the case for EMV. The replay buﬀer has
+size 80, and the minibatch size is 20 for the stochastic gradient decent. The
+target network has the soft update parameter τ = 0.001. Finally, we adopt
+the OU process for adding exploration noise; see Lillicrap et al. (2016) for
+more details. All the simulations using the DDPG algorithm were trained
+in Tensorﬂow.
+We summarize in Table 1 the simulation results for the three methods,
+27
+
+
+=== PDF PAGE 28 ===
+EMV, MLE and DDPG, under market scenarios corresponding to diﬀerent
+combinations of µ’s and σ’s. For each method under each market scenario,
+we present the annualized sample mean M and sample variance V of the
+last 2000 terminal wealth, and the corresponding annualized Sharpe ratio
+SR = M−1
+√
+V .
+A few observations are in order. First of all, the EMV algorithm outper-
+forms the other two methods by a large margin in several statistics of the
+investment outcome including sample mean, sample variance and Sharpe
+ratio.
+In fact, based on the comparison of Sharpe ratios, EMV outper-
+forms MLE in all the 28 experiments, and outperforms DDPG in 23 out of
+the total 28 experiments. Notice that DDPG yields rather unstable perfor-
+mance across diﬀerent market scenarios, with some of the sample average
+terminal wealth below 0 indicating the occurrence of bankruptcy. The EMV
+algorithm, on the other hand, achieves positive annualized return in all the
+experiments. The advantage of the EMV algorithm over the deep learning
+DDPG algorithm is even more signiﬁcant if we take into account the train-
+ing time (all the experiments were performed on a MacBook Air laptop).
+Indeed, DDPG involves extensive training of two deep neural networks, mak-
+ing it less appealing for high-frequency portfolio rebalancing and trading in
+practice.
+Another advantage of EMV over DDPG is the ease of hyperparameter
+tuning. Recall that the learning rates are ﬁxed respectively for EMV and
+DDPG across all the experiments for diﬀerent µ’s and σ’s.
+The perfor-
+mance of the EMV algorithm is less aﬀected by the ﬁxed learning rates,
+while the DDPG algorithm is not. Indeed, DDPG has been noted for its
+notorious brittleness and hyperparameter sensitivity in practice (see, for ex-
+ample, Duan et al. (2016), Henderson et al. (2018)), issues also shared by
+other deep RL methods for continuous control problems. Our EMV algo-
+rithm does not suﬀer from such issues, as a result of avoiding deep neural
+networks in its training and decision making processes.
+The MLE method, although free from any learning rates tuning, needs to
+estimate the underlying parameters µ and σ. In all the simulations presented
+in Table 1, the estimated value of σ is relatively close to its true value, while
+the drift parameter µ cannot be estimated accurately. This is consistent
+with the well documented mean–blur problem, which in turn leads to higher
+variance of the terminal wealth (see Table 1) when one applies the estimated
+µ and σ to select the risky allocation (28).
+Finally, we present the learning curves for the three methods in Figure 1
+and Figure 2. We plot the changes of the sample mean and sample variance
+28
+
+
+=== PDF PAGE 29 ===
+Table 1: Comparison of the annualized sample mean (M),
+sample variance (V ), Sharpe ratio (SR) and average training
+time (per experiment) for EMV, MLE and DDPG.14
+Market scenarios
+EMV
+MLE
+DDPG
+µ = −50%, σ = 10%
+1.396;
+0.006;
+5.107
+1.556;
+0.017;
+4.284
+1.297;
+0.107;
+0.908
+µ = −30%, σ = 10%
+1.390;
+0.016;
+3.039
+1.215;
+0.014;
+1.833
+1.401;
+0.003;
+7.076
+µ = −10%, σ = 10%
+1.330;
+0.074;
+1.218
+1.056;
+1.365;
+0.482
+0.901;
+0.014;
+-0.833
+µ = 0%,
+σ = 10%
+1.204;
+1.280;
+0.180
+0.926;
+38.40;
+-0.012
+1.029;
+0.038;
+0.147
+µ = 10%,
+σ = 10%
+1.318;
+0.171;
+0.769
+1.009;
+0.453;
+0.014
+0.951;
+0.008;
+-0.541
+µ = 30%,
+σ = 10%
+1.385;
+0.019;
+2.785
+1.179;
+0.059;
+0.737
+0.224;
+0.104;
+-2.405
+µ = 50%,
+σ = 10%
+1.394;
+0.007;
+4.772
+1.459;
+0.013;
+3.983
+1.478;
+0.667;
+0.717
+µ = −50%, σ = 20%
+1.387;
+0.022;
+2.606
+1.310;
+0.050;
+1.387
+-0.551; 0.425;
+-2.379
+µ = −30%, σ = 20%
+1.359;
+0.051;
+1.598
+1.205;
+1.319;
+0.178
+1.973;
+0.404;
+1.531
+µ = −10%, σ = 20%
+1.309;
+0.245;
+0.625
+1.036;
+2.183;
+0.024
+1.349;
+0.368;
+0.575
+µ = 0%,
+σ = 20%
+1.105;
+0.727;
+0.123
+0.921;
+6.887;
+-0.301
+0.988;
+0.139;
+-0.033
+µ = 10%,
+σ = 20%
+1.221;
+0.314;
+0.395
+1.045;
+6.751;
+0.017
+1.243;
+0.354;
+0.408
+µ = 30%,
+σ = 20%
+1.345;
+0.062;
+1.387
+1.155;
+1.743;
+0.117
+1.360;
+0.050;
+1.613
+µ = 50%,
+σ = 20%
+1.385;
+0.027;
+2.350
+1.237;
+1.293;
+0.208
+1.385;
+0.004;
+6.496
+µ = −50%, σ = 30%
+1.353;
+0.044;
+1.682
+1.333;
+9.465;
+0.108
+0.272;
+2.762;
+-0.438
+µ = −30%, σ = 30%
+1.323;
+0.106;
+0.992
+1.092;
+5.657;
+0.039
+0.034;
+0.924;
+-1.005
+µ = −10%, σ = 30%
+1.317;
+0.696;
+0.380
+1.045;
+17.87;
+0.011
+1.371;
+0.792;
+0.417
+µ = 0%,
+σ = 30%
+1.079;
+0.727;
+0.092
+0.955;
+28.84;
+-0.008
+1.070;
+0.752;
+0.081
+µ = 10%,
+σ = 30%
+1.282;
+0.885;
+0.300
+0.885;
+24.06;
+-0.023
+1.243;
+0.825;
+0.268
+µ = 30%,
+σ = 30%
+1.334;
+0.131;
+0.921
+0.886;
+24.41;
+-0.023
+1.210;
+0.921;
+0.218
+µ = 50%,
+σ = 30%
+1.350;
+0.049;
+1.583
+1.238;
+7.505;
+0.087
+0.610;
+0.143
+-1.030
+µ = −50%, σ = 40%
+1.342;
+0.061;
+1.385
+1.284;
+11.14;
+0.085
+1.328;
+0.501;
+0.463
+µ = −30%, σ = 40%
+1.320;
+0.146;
+0.839
+1.145;
+3.315;
+0.080
+1.212;
+0.160;
+0.531
+µ = −10%, σ = 40%
+1.241;
+0.707;
+0.287
+0.979;
+7.960;
+-0.007
+1.335;
+1.413;
+0.282
+µ = 0%,
+σ = 40%
+1.057;
+0.671;
+0.070
+0.950;
+31.60;
+-0.009
+1.064;
+1.467;
+0.053
+µ = 10%,
+σ = 40%
+1.155;
+0.591;
+0.202
+1.053;
+9.090;
+0.017
+1.242;
+1.499;
+0.198
+µ = 30%,
+σ = 40%
+1.320;
+0.198;
+0.716
+1.083;
+17.46;
+0.020
+0.179;
+1.533;
+-0.663
+µ = 50%,
+σ = 40%
+1.329;
+0.078;
+1.174
+0.963;
+43.17;
+-0.006
+-0.390; 1.577;
+-1.107
+Training time
+< 10s
+< 10s
+≈3hrs
+14If the hyperparameters are allowed to be tuned on a scenario-by-scenario basis (i.e.,
+not for comparison purpose), the performance of EMV can be further improved with the
+Shape ratio close to its theoretical maximum, whereas improvement is more diﬃcult to
+achieve for DDPG by hyperparameter tuning.
+29
+
+
+=== PDF PAGE 30 ===
+of every (non-overlapping) 50 terminal wealth, as the learning proceeds for
+each method.12
+From these plots, we can see that the EMV algorithm
+converges relatively faster than the other two methods, achieving relatively
+good performance even in the early phase of the learning process. This is
+also consistent with the convergence result in Theorem 6 and the remarks
+immediately following it in Section 4.1.
+0
+50
+100
+150
+200
+250
+300
+350
+400
+Aggregated episodes (50)
+-0.5
+0
+0.5
+1
+1.5
+2
+2.5
+3
+3.5
+Sample mean
+DDPG
+MLE
+EMV
+Target z=1.4
+Figure 1: Learning curves of sample means of terminal wealth (over every
+50 iterations) for EMV, MLE and DDPG (µ = −30%, σ = 10%).
+12Note the log scale for the variance in Figure 2.
+30
+
+
+=== PDF PAGE 31 ===
+0
+50
+100
+150
+200
+250
+300
+350
+400
+Aggregated episodes (50)
+10-4
+10-3
+10-2
+10-1
+100
+101
+102
+103
+Sample variance
+DDPG
+MLE
+EMV
+Figure 2: Learning curves of sample variances of terminal wealth (over every
+50 iterations) for EMV, MLE and DDPG (µ = −30%, σ = 10%).
+5.2
+The non-stationary market case
+When it comes to the application domains of RL, one of the major diﬀer-
+ences between quantitative ﬁnance and other domains (such as AlphaGo; see
+Silver et al. (2016)) is that the underlying unknown investment environment
+is typically time-varying with the former. In this subsection, we consider the
+performance of the previous three methods in the non-stationary scenario
+where the price process is modeled by a stochastic factor model. To have
+a well-deﬁned learning problem, the stochastic factor needs to change at a
+much slower time-scale, compared to that of the learning process. Speciﬁ-
+cally, we take the slow factor model within a multi-scale stochastic volatility
+model framework (see, for example, Fouque et al. (2003)). The price process
+follows
+dSt = St(µt dt + σ dWt),
+0 < t ≤T,
+S0 = s0 > 0,
+with µt, σt, t ∈[0, T], being respectively the drift and volatility processes
+restricted to each simulation episode [0, T] (so they may vary across diﬀer-
+ent episodes). The controlled wealth dynamics over each episode [0, T] is
+therefore
+dxu
+t = σtut(ρt dt + dWt),
+0 < t ≤T,
+xu
+0 = x0 ∈R.
+(53)
+31
+
+
+=== PDF PAGE 32 ===
+For simulations in this subsection, we take
+dρt = δdt
+and
+dσt = σt(δ dt +
+√
+δ dW 1
+t ),
+0 < t ≤MT,
+(54)
+with ρ0 ∈R and σ0 > 0 being the initial values respectively, δ > 0 being a
+small parameter, and the two Brownian motions satisfying d⟨W, W 1⟩t = γdt,
+with |γ| < 1.
+Notice that the terminal horizon for the stochastic factor
+model (54) is MT (recall M = 20000 and T = 1 as in Subsection 5.1),
+indicating that the stochastic factors ρt and σt change across all the M
+episodes. To make sure that their values stay in reasonable ranges after
+running for all M episodes, we take δ to be small with value δ = 0.0001,
+and ρ0 = −3.2, σ0 = 10%, corresponding to the case µ0 = −30% initially.
+We plot the learning curves in Figure 3 and Figure 4. Clearly, the EMV
+algorithm displays remarkable stability for learning performance, compared
+to the other two methods even in the non-stationary market scenario.
+0
+50
+100
+150
+200
+250
+300
+350
+400
+Aggregated episodes (50)
+-4
+-2
+0
+2
+4
+6
+8
+10
+Sample mean
+DDPG
+MLE
+EMV
+Target z=1.4
+Figure 3: Learning curves of sample means of terminal wealth (over every 50
+iterations) for EMV, MLE and DDPG for non-stationary market scenario
+(µ0 = −30%, σ0 = 10%, δ = 0.0001, γ = 0).
+32
+
+
+=== PDF PAGE 33 ===
+0
+50
+100
+150
+200
+250
+300
+350
+400
+Aggregated episodes (50)
+10-6
+10-4
+10-2
+100
+102
+104
+Sample variance
+DDPG
+MLE
+EMV
+Figure 4: Learning curves of sample variances of terminal wealth (over every
+50 iterations) for EMV, MLE and DDPG for non-stationary market scenario
+(µ0 = −30%, σ0 = 10%, δ = 0.0001, γ = 0).
+5.3
+The decaying exploration case
+A decaying exploration scheme is often desirable for RL since exploitation
+ought to gradually take more weight over exploration, as more learning it-
+erations have been carried out.15
+Within the current entropy-regularized
+relaxed stochastic control framework, we have been able to show the conver-
+gence from the solution of the exploratory MV to that of the classical MV
+in Theorem 3, as the tradeoﬀparameter λ →0. Putting together Theorem
+3 and Theorem 6, we can reasonably expect a further improvement of the
+EMV algorithm when it adopts a decaying λ scheme, rather than a constant
+λ as in the previous two sections. Our numerical simulation result reported
+in Figure 5 demonstrates slightly improved performance of the EMV algo-
+rithm with a speciﬁcally chosen λ process that decreases across all the M
+episodes, given by
+λk = λ0
+
+1 −exp
+200(k −M)
+M
+
+,
+for k = 0, 1, 2, . . . , M.
+(55)
+15It is important to distinguish between decaying during a given learning episode [0, T ]
+and decaying during the entire learning process (across diﬀerent episodes). The former
+has been derived in Theorem 1 as the decay of the Gaussian variance in t. The latter
+refers to the notion that less exploration is needed in later learning episodes.
+33
+
+
+=== PDF PAGE 34 ===
+We plot the histogram of the last 2000 values of terminal wealth generated
+by the EMV algorithm with the decaying λ scheme starting from λ0 = 2 and
+the original EMV algorithm with constant λ = 2, respectively. The Sharpe
+ratio increases from 3.039 to 3.243. The result in Figure 5 corresponds to
+the stationary market case; the case for non-stationary market demonstrates
+similar improvement by adopting the decaying exploration scheme.
+Figure 5: Histogram of the last 2000 values of terminal wealth for EMV
+with constant λ and decaying λ (µ = −30%, σ = 10%).
+6
+Conclusions
+In this paper we have developed an RL framework for the continuous-time
+MV portfolio selection, using the exploratory stochastic control formulation
+recently proposed and studied in Wang et al. (2019). By recasting the MV
+portfolio selection as an exploration/learning and exploitation/optimization
+problem, we are able to derive a data-driven solution, completely skipping
+any estimation of the unknown model parameters which is a notoriously dif-
+ﬁcult, if not insurmountable, task in investment practice. The exploration
+part is explicitly captured by the relaxed stochastic control formulation and
+the resulting exploratory state dynamics, as well as the entropy-regularized
+objective function of the new optimization problem.
+We prove that the
+34
+
+
+=== PDF PAGE 35 ===
+feedback control distribution that optimally balances exploration and ex-
+ploitation in the MV setting is a Gaussian distribution with a time-decaying
+variance. Similar to the case of general LQ problems in Wang et al. (2019),
+we establish the close connections between the exploratory MV and the clas-
+sical MV problems, including the solvability equivalence and the convergence
+as exploration decays to zero.
+The RL framework of the classical MV problem also allows us to design a
+competitive and interpretable RL algorithm, thanks in addition to a proved
+policy improvement theorem and the explicit functional structures for both
+the value function and the optimal control policy. The policy improvement
+theorem yields an updating scheme for the control policy that improves the
+objective value in each iteration. The explicit structures of the theoretical
+optimal solution to the exploratory MV problem suggest simple yet eﬃcient
+function approximators without having to resort to black-box approaches
+such as neural network approximations. The advantage of our method has
+been demonstrated by various numerical simulations with both stationary
+and non-stationary market environments, where our RL algorithm generally
+outperforms other two approaches by large margins when solving the MV
+problem in the continuous control setting.
+It should also be noted that the MV problem considered in this paper is
+almost model-free, in the sense that what is essentially needed for the un-
+derlying theory is the LQ structure only, namely, the incremental change in
+wealth depends linearly on wealth and portfolio, and the objective function
+is quadratic in the terminal wealth. The former is a reasonable assumption
+so long as the incremental change in the risky asset price is linear in the price
+itself (including but not limited to the case when the price is lognormal and
+the non-stationary case studied in Section 5.2), and the latter is an intrinsic
+property of the MV formulation due to the variance term. Therefore, our
+algorithm is data-driven on one hand yet entirely interpretable on the other
+(in contrast to the black-box approach).
+Interesting future research directions include empirical study of our RL
+algorithm using real market data, in the high-dimensional control setting
+where allocations among multiple risky assets need to be determined at
+each decision time. For that, our exploratory MV formulation would remain
+intact and a multivariate Gaussian distribution would be learned using an
+algorithm similar to Algorithm 1. It would be interesting to compare the
+performance of our algorithm with other existing methods, including the
+Fama-French model (Fama and French (1993)) and the distributionally ro-
+bust method for MV problem (Blanchet et al. (2018)). Another open ques-
+tion is to design an endogenous, “optimal” decaying scheme for the temper-
+35
+
+
+=== PDF PAGE 36 ===
+ature parameter λ as learning advances, an essential quantity that dictates
+the overall level of exploration and bridges the exploratory MV problem with
+the classical MV problem. These questions are left for further investigations.
+References
+Robert Almgren and Neil Chriss. Optimal execution of portfolio transac-
+tions. Journal of Risk, 3:5–40, 2001.
+Tomasz R Bielecki, Hanqing Jin, Stanley R Pliska, and Xun Yu Zhou.
+Continuous-time mean-variance portfolio selection with bankruptcy pro-
+hibition. Mathematical Finance, 15(2):213–244, 2005.
+Jose Blanchet, Lin Chen, and Xun Yu Zhou. Distributionally robust mean-
+variance portfolio selection with Wasserstein distances.
+arXiv preprint
+arXiv:1802.04885, 2018.
+John Y Campbell, Andrew W Lo, and A Craig MacKinlay. The econometrics
+of ﬁnancial markets. Princeton University press, 1997.
+Han-Fu Chen and Lei Guo. Identiﬁcation and stochastic adaptive control.
+Springer Science & Business Media, 2012.
+Kenji Doya. Reinforcement learning in continuous time and space. Neural
+Computation, 12(1):219–245, 2000.
+Yan Duan, Xi Chen, Rein Houthooft, John Schulman, and Pieter Abbeel.
+Benchmarking deep reinforcement learning for continuous control. In In-
+ternational Conference on Machine Learning, pages 1329–1338, 2016.
+Darrell Duﬃe and Henry R Richardson. Mean-variance hedging in continu-
+ous time. The Annals of Applied Probability, 1(1):1–15, 1991.
+Eugene F Fama and Kenneth R French. Common risk factors in the returns
+on stocks and bonds. Journal of ﬁnancial economics, 33(1):3–56, 1993.
+Jean-Pierre Fouque, George Papanicolaou, Ronnie Sircar, and Knut Solna.
+Multiscale stochastic volatility asymptotics. Multiscale Modeling & Sim-
+ulation, 2(1):22–42, 2003.
+Ian Goodfellow, Yoshua Bengio, and Aaron Courville. Deep Learning. MIT
+Press, 2016. http://www.deeplearningbook.org.
+36
+
+
+=== PDF PAGE 37 ===
+Tuomas Haarnoja, Haoran Tang, Pieter Abbeel, and Sergey Levine. Rein-
+forcement learning with deep energy-based policies. In Proceedings of the
+34th International Conference on Machine Learning, pages 1352–1361,
+2017.
+Peter Henderson, Riashat Islam, Philip Bachman, Joelle Pineau, Doina Pre-
+cup, and David Meger.
+Deep reinforcement learning that matters.
+In
+Thirty-Second AAAI Conference on Artiﬁcial Intelligence, 2018.
+Dieter Hendricks and Diane Wilcox. A reinforcement learning extension to
+the Almgren-Chriss framework for optimal trade execution. In 2014 IEEE
+Conference on Computational Intelligence for Financial Engineering &
+Economics (CIFEr), pages 457–464. IEEE, 2014.
+James M Hutchinson, Andrew W Lo, and Tomaso Poggio.
+A nonpara-
+metric approach to pricing and hedging derivative securities via learning
+networks. The Journal of Finance, 49(3):851–889, 1994.
+Saul D Jacka and Aleksandar Mijatovi´c. On the policy improvement algo-
+rithm in continuous time. Stochastics, 89(1):348–359, 2017.
+Panqanamala Ramana Kumar and Pravin Varaiya. Stochastic systems: Es-
+timation, identiﬁcation, and adaptive control, volume 75. SIAM, 2015.
+Harold Kushner and G George Yin. Stochastic approximation and recur-
+sive algorithms and applications, volume 35. Springer Science & Business
+Media, 2003.
+Duan Li and Wan-Lung Ng. Optimal dynamic portfolio selection: Multi-
+period mean-variance formulation. Mathematical Finance, 10(3):387–406,
+2000.
+Xun Li, Xun Yu Zhou, and Andrew EB Lim. Dynamic mean-variance port-
+folio selection with no-shorting constraints. SIAM Journal on Control and
+Optimization, 40(5):1540–1555, 2002.
+Timothy Lillicrap, Jonathan Hunt, Alexander Pritzel, Nicolas Heess, Tom
+Erez, Yuval Tassa, David Silver, and Daan Wierstra. Continuous con-
+trol with deep reinforcement learning.
+In International Conference on
+Learning Representations, 2016.
+Andrew EB Lim and Xun Yu Zhou. Mean-variance portfolio selection with
+random parameters in a complete market.
+Mathematics of Operations
+Research, 27(1):101–120, 2002.
+37
+
+
+=== PDF PAGE 38 ===
+David G Luenberger. Investment Science. Oxford University Press, New
+York, 1998.
+Shie Mannor and John N Tsitsiklis. Algorithmic aspects of mean–variance
+optimization in Markov decision processes. European Journal of Opera-
+tional Research, 231(3):645–653, 2013.
+Harry Markowitz. Portfolio selection. The Journal of Finance, 7(1):77–91,
+1952.
+Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei A Rusu, Joel
+Veness, Marc G Bellemare, Alex Graves, Martin Riedmiller, Andreas K
+Fidjeland, and Georg Ostrovski. Human-level control through deep rein-
+forcement learning. Nature, 518(7540):529, 2015.
+John Moody and Matthew Saﬀell. Learning to trade via direct reinforce-
+ment. IEEE transactions on neural Networks, 12(4):875–889, 2001.
+John Moody, Lizhong Wu, Yuansong Liao, and Matthew Saﬀell. Perfor-
+mance functions and reinforcement learning for trading systems and port-
+folios. Journal of Forecasting, 17(5-6):441–470, 1998.
+R´emi Munos. A study of reinforcement learning in the continuous case by
+the means of viscosity solutions. Machine Learning, 40(3):265–299, 2000.
+R´emi Munos and Paul Bourgine.
+Reinforcement learning for continuous
+stochastic control problems. In Advances in neural information processing
+systems, pages 1029–1035, 1998.
+Yuriy Nevmyvaka, Yi Feng, and Michael Kearns. Reinforcement learning
+for optimized trade execution. In Proceedings of the 23rd international
+conference on Machine learning, pages 673–680. ACM, 2006.
+LA Prashanth and Mohammad Ghavamzadeh. Actor-critic algorithms for
+risk-sensitive MDPs. In Advances in neural information processing sys-
+tems, pages 252–260, 2013.
+LA Prashanth and Mohammad Ghavamzadeh. Variance-constrained actor-
+critic algorithms for discounted and average reward MDPs.
+Machine
+Learning, 105(3):367–417, 2016.
+Makoto Sato and Shigenobu Kobayashi. Variance-penalized reinforcement
+learning for risk-averse asset allocation. In International Conference on
+Intelligent Data Engineering and Automated Learning, pages 244–249.
+Springer, 2000.
+38
+
+
+=== PDF PAGE 39 ===
+Makoto Sato, Hajime Kimura, and Shibenobu Kobayashi. TD algorithm for
+the variance of return and mean-variance reinforcement learning. Trans-
+actions of the Japanese Society for Artiﬁcial Intelligence, 16(3):353–362,
+2001.
+Tom Schaul, John Quan, Ioannis Antonoglou, and David Silver. Prioritized
+experience replay. In International Conference on Learning Representa-
+tions, Puerto Rico, 2016.
+David Silver, Aja Huang, Chris J Maddison, Arthur Guez, Laurent Sifre,
+George Van Den Driessche, Julian Schrittwieser, Ioannis Antonoglou,
+Veda Panneershelvam, and Marc Lanctot.
+Mastering the game of Go
+with deep neural networks and tree search. Nature, 529(7587):484, 2016.
+Matthew J Sobel. The variance of discounted Markov decision processes.
+Journal of Applied Probability, 19(4):794–802, 1982.
+Robert Henry Strotz. Myopia and inconsistency in dynamic utility maxi-
+mization. The Review of Economic Studies, 23(3):165–180, 1955.
+Richard S Sutton and Andrew G Barto. Reinforcement learning: An intro-
+duction. MIT press, 2018.
+Aviv Tamar and Shie Mannor. Variance adjusted actor critic algorithms.
+arXiv preprint arXiv:1310.3697, 2013.
+Aviv Tamar, Dotan Di Castro, and Shie Mannor. Temporal diﬀerence meth-
+ods for the variance of the reward to go. In ICML (3), pages 495–503,
+2013.
+Haoran Wang, Thaleia Zariphopoulou, and Xun Yu Zhou. Exploration ver-
+sus exploitation in reinforcement learning: A stochastic control approach.
+arXiv preprint: arXiv:1812.01552v3, 2019.
+Xun Yu Zhou and Duan Li. Continuous-time mean-variance portfolio selec-
+tion: A stochastic LQ framework. Applied Mathematics and Optimization,
+42(1):19–33, 2000.
+Xun Yu Zhou and George Yin. Markowitz’s mean-variance portfolio selec-
+tion with regime switching: A continuous-time model. SIAM Journal on
+Control and Optimization, 42(4):1466–1482, 2003.
+39

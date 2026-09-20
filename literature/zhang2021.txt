@@ -1,0 +1,1945 @@
+
+=== PDF PAGE 1 ===
+Mean-Variance Policy Iteration for Risk-Averse Reinforcement Learning
+Shangtong Zhang,1 Bo Liu, 2 Shimon Whiteson 1
+1 University of Oxford
+2 Auburn University
+shangtong.zhang@cs.ox.ac.uk, bo.liu@auburn.edu, shimon.whiteson@cs.ox.ac.uk
+Abstract
+We present a mean-variance policy iteration (MVPI) frame-
+work for risk-averse control in a discounted inﬁnite hori-
+zon MDP optimizing the variance of a per-step reward ran-
+dom variable. MVPI enjoys great ﬂexibility in that any pol-
+icy evaluation method and risk-neutral control method can
+be dropped in for risk-averse control off the shelf, in both
+on- and off-policy settings. This ﬂexibility reduces the gap
+between risk-neutral control and risk-averse control and is
+achieved by working on a novel augmented MDP directly. We
+propose risk-averse TD3 as an example instantiating MVPI,
+which outperforms vanilla TD3 and many previous risk-
+averse control methods in challenging Mujoco robot simula-
+tion tasks under a risk-aware performance metric. This risk-
+averse TD3 is the ﬁrst to introduce deterministic policies and
+off-policy learning into risk-averse reinforcement learning,
+both of which are key to the performance boost we show in
+Mujoco domains.
+Introduction
+One fundamental task in reinforcement learning (RL, Sutton
+and Barto 2018) is control, in which we seek a policy that
+maximizes certain performance metrics. In risk-neutral RL,
+the performance metric is usually the expectation of some
+random variable, for example, the expected total (discounted
+or undiscounted) reward (Puterman 2014; Sutton and Barto
+2018). We, however, sometimes want to minimize certain
+risk measures of that random variable while maximizing its
+expectation. For example, a portfolio manager usually wants
+to reduce the risk of a portfolio while maximizing its return.
+Risk-averse RL is a framework for studying such problems.
+Although many real-world applications can potentially
+beneﬁt from risk-averse RL, e.g., pricing (Wang 2000),
+healthcare (Parker 2009), portfolio management (Lai et al.
+2011), autonomous driving (Maurer et al. 2016), and
+robotics (Majumdar and Pavone 2020), the development of
+risk-averse RL largely falls behind risk-neutral RL. Risk-
+neutral RL methods have enjoyed superhuman performance
+in many domains, e.g., Go (Silver et al. 2016), protein de-
+sign (Senior, Jumper, and Hassabis 2018), and StarCraft II
+(Vinyals et al. 2019), while no human-level performance
+has been reported for risk-averse RL methods in real-world
+Copyright © 2021, Association for the Advancement of Artiﬁcial
+Intelligence (www.aaai.org). All rights reserved.
+applications. Risk-neutral RL methods have enjoyed stable
+off-policy learning (Watkins and Dayan 1992; Maei 2011;
+Fujimoto, van Hoof, and Meger 2018; Haarnoja et al. 2018),
+while state-of-the-art risk-averse RL methods, e.g., Xie et al.
+(2018); Bisi et al. (2020), still require on-policy samples.
+Risk-neutral RL methods have exploited deep neural net-
+work function approximators and distributed training (Mnih
+et al. 2016; Espeholt et al. 2018), while tabular and linear
+methods still dominate the experiments of risk-averse RL lit-
+erature (Tamar, Di Castro, and Mannor 2012; Prashanth and
+Ghavamzadeh 2013; Xie et al. 2018; Chow et al. 2018). Such
+a big gap between risk-averse RL and risk-neutral RL gives
+rise to a natural question: can we design a meta algorithm
+that can easily leverage recent advances in risk-neutral RL
+for risk-averse RL? In this paper, we give an afﬁrmative an-
+swer via the mean-variance policy iteration (MVPI) frame-
+work.
+Although many risk measures have been used in risk-
+averse RL, in this paper, we mainly focus on variance (So-
+bel 1982; Mannor and Tsitsiklis 2011; Tamar, Di Castro, and
+Mannor 2012; Prashanth and Ghavamzadeh 2013; Xie et al.
+2018) given its advantages in interpretability and computa-
+tion (Markowitz and Todd 2000; Li and Ng 2000). Such an
+RL paradigm is usually referred to as mean-variance RL,
+and previous mean-variance RL methods usually consider
+the variance of the total reward random variable (Tamar,
+Di Castro, and Mannor 2012; Prashanth and Ghavamzadeh
+2013; Xie et al. 2018). Recently, Bisi et al. (2020) propose a
+reward-volatility risk measure that considers the variance of
+a per-step reward random variable. Bisi et al. (2020) show
+that the variance of the per-step reward can better capture
+the short-term risk than the variance of the total reward and
+usually leads to smoother trajectories.
+In complicated environments with function approxima-
+tion, pursuing the exact policy that minimizes the variance of
+the total reward is usually intractable. In practice, all we can
+hope is to lower the variance of the total reward to a certain
+level. As the variance of the per-step reward bounds the vari-
+ance of the total reward from above (Bisi et al. 2020), in this
+paper, we propose to optimize the variance of the per-step
+reward as a proxy for optimizing the variance of the total
+reward. Though the policy minimizing the variance of the
+per-step reward does not necessarily minimize the variance
+of the total reward, in this paper, we show, via MVPI, that
+arXiv:2004.10888v6  [cs.LG]  7 Apr 2022
+
+
+=== PDF PAGE 2 ===
+optimizing the variance of the per-step reward as a proxy is
+more efﬁcient and scalable than optimizing the variance of
+the total reward directly.
+MVPI enjoys great ﬂexibility in that any policy evalua-
+tion method and risk-neutral control method can be dropped
+in for risk-averse control off the shelf, in both on- and off-
+policy settings. Key to the ﬂexibility of MVPI is that it works
+on an augmented MDP directly, which we make possible
+by introducing the Fenchel duality and block cyclic coordi-
+nate ascent to solve a policy-dependent reward issue (Bisi
+et al. 2020). This issue refers to a requirement to solve an
+MDP whose reward function depends on the policy being
+followed, i.e., the reward function of this MDP is nonstation-
+ary. Consequently, standard tools from the MDP literature
+are not applicable. We propose risk-averse TD3 as an ex-
+ample instantiating MVPI, which outperforms vanilla TD3
+(Fujimoto, van Hoof, and Meger 2018) and many previous
+mean-variance RL methods (Tamar, Di Castro, and Mannor
+2012; Prashanth and Ghavamzadeh 2013; Xie et al. 2018;
+Bisi et al. 2020) in challenging Mujoco robot simulation
+tasks in terms of a risk-aware performance metric. To the
+best of our knowledge, we are the ﬁrst to benchmark mean-
+variance RL methods in Mujoco domains, a widely used
+benchmark for robotic-oriented RL research, and the ﬁrst
+to bring off-policy learning and deterministic policies into
+mean-variance RL.
+Mean-Variance RL
+We consider an inﬁnite horizon MDP with a state space S, an
+action space A, a bounded reward function r : S × A →R,
+a transition kernel p : S × S × A →[0, 1], an initial distri-
+bution µ0 : S →[0, 1], and a discount factor γ ∈[0, 1].
+The initial state S0 is sampled from µ0. At time step t,
+an agent takes an action At according to π(·|St), where
+π : A × S →[0, 1] is the policy followed by the agent. The
+agent then gets a reward Rt+1 .= r(St, At) and proceeds to
+the next state St+1 according to p(·|St, At). In this paper, we
+consider a deterministic reward setting for the ease of pre-
+sentation, following Chow (2017); Xie et al. (2018). The re-
+turn at time step t is deﬁned as Gt .= P∞
+i=0 γir(St+i, At+i).
+When γ < 1, Gt is always well deﬁned. When γ = 1, to
+ensure Gt remains well deﬁned, it is usually assumed that
+all polices are proper (Bertsekas and Tsitsiklis 1996), i.e.,
+for any policy π, the chain induced by π has some absorb-
+ing states, one of which the agent will eventually go to with
+probability 1. Furthermore, the rewards are always 0 there-
+after. For any γ ∈[0, 1], G0 is the random variable indicat-
+ing the total reward, and we use its expectation
+J(π) .= Eµ0,p,π[G0],
+as our primary performance metric. In particular, when γ =
+1, we can express G0 as G0 = PT −1
+t=0 r(St, At), where T
+is a random variable indicating the ﬁrst time the agent goes
+to an absorbing state. For any γ ∈[0, 1], the state value
+function and the state-action value function are deﬁned as
+vπ(s) .= E[Gt|St = s] and qπ(s, a) .= E[Gt|St = s, At =
+a] respectively.
+Total Reward Perspective. Previous mean-variance
+RL methods (Prashanth and Ghavamzadeh 2013; Tamar,
+Di Castro, and Mannor 2012; Xie et al. 2018) usually con-
+sider the variance of the total reward. Namely, they consider
+the following problem:
+maxθ E[G0]
+subject to
+V(G0) ≤ξ,
+(1)
+where V(·) indicates the variance of a random vari-
+able, ξ indicates the user’s tolerance for variance, and
+π is parameterized by θ. In particular, Prashanth and
+Ghavamzadeh (2013) consider the setting γ
+<
+1 and
+convert (1) into an unconstrained saddle-point problem:
+maxλ minθ L1(θ, λ) .= −E[G0] + λ(V(G0) −ξ), where λ
+is the dual variable. (Prashanth and Ghavamzadeh 2013)
+use stochastic gradient descent to ﬁnd the saddle-point
+of L1(θ, λ). To estimate ∇θ,λL1(θ, λ), they propose two
+simultaneous perturbation methods: simultaneous pertur-
+bation stochastic approximation and smoothed functional
+(Bhatnagar, Prasad, and Prashanth 2013), yielding a three-
+timescale algorithm. Empirical success is observed in a sim-
+ple trafﬁc control MDP.
+Tamar, Di Castro, and Mannor (2012) consider the
+setting γ
+=
+1. Instead of using the saddle-point
+formulation
+in
+Prashanth
+and
+Ghavamzadeh
+(2013),
+they
+consider
+the
+following
+unconstrained
+problem:
+maxθ L2(θ) .= E[G0] −λg(V(G0) −ξ), where λ > 0 is a
+hyperparameter to be tuned and g(·) is a penalty function,
+which they deﬁne as g(x)
+.= (max{0, x})2. The analyt-
+ical expression of ∇θL2(θ) they provide involves a term
+E[G0]∇θE[G0]. To estimate this term, Tamar, Di Castro,
+and Mannor (2012) consider a two-timescale algorithm and
+keep running estimates for E[G0] and V[G0] in a faster
+timescale, yielding an episodic algorithm. Empirical success
+is observed in a simple portfolio management MDP.
+Xie et al. (2018) consider the setting γ = 1 and set the
+penalty function g(·) in Tamar, Di Castro, and Mannor
+(2012) to the identity function. With the Fenchel duality
+x2 = maxy(2xy −y2), they transform the original problem
+into
+maxθ,y L3(θ, y) .= 2y(E[G0] +
+1
+2λ) −y2 −E[G2
+0],
+where y is the dual variable. Xie et al. (2018) then propose
+a solver based on stochastic coordinate ascent, yielding an
+episodic algorithm.
+Per-Step Reward Perspective. Recently Bisi et al.
+(2020) propose a reward-volatility risk measure, which is
+the variance of a per-step reward random variable R. In the
+setting γ < 1, it is well known that the expected total dis-
+counted reward can be expressed as
+J(π) =
+1
+1−γ
+P
+s,a dπ(s, a)r(s, a),
+where dπ(s, a) is the normalized discounted state-action dis-
+tribution:
+dπ(s, a) .= (1 −γ) P∞
+t=0 γt Pr(St = s, At = a|µ0, π, p).
+We now deﬁne the per-step reward random variable R, a
+discrete random variable taking values in the image of r,
+by deﬁning its probability mass function as p(R = x) =
+P
+s,a dπ(s, a)Ir(s,a)=x, where I is the indicator function. It
+follows that E[R] = (1 −γ)J(π). Bisi et al. (2020) argue
+that V(R) can better capture short-term risk than V(G0) and
+
+
+=== PDF PAGE 3 ===
+optimizing V(R) usually leads to smoother trajectories than
+optimizing V(G0), among other advantages of this risk mea-
+sure. Bisi et al. (2020), therefore, consider the following ob-
+jective:
+Jλ(π) .= E[R] −λV(R).
+(2)
+Bisi et al. (2020) show that Jλ(π) = E[R −λ(R −E[R])2],
+i.e., to optimize the risk-aware objective Jλ(π) is to optimize
+the canonical risk-neutral objective of a new MDP, which is
+the same as the original MDP except that the new reward
+function is
+r′(s, a) .= r(s, a) −λ
+ r(s, a) −(1 −γ)J(π)
+2.
+Unfortunately, this new reward function r′ depends on the
+policy π due to the occurrence of J(π), implying the reward
+function is actually nonstationary. By contrast, in canoni-
+cal RL settings (e.g., Puterman (2014); Sutton and Barto
+(2018)), the reward function is assumed to be stationary. We
+refer to this problem as the policy-dependent-reward issue.
+Due to this issue, the rich classical MDP toolbox cannot be
+applied to this new MDP easily, and the approach of Bisi
+et al. (2020) does not and cannot work on this new MDP
+directly.
+Bisi et al. (2020) instead work on the objective Eq (2)
+directly without resorting to the augmented MDP. They pro-
+pose to optimize a performance lower bound of Jλ(π) by
+extending the performance difference theorem (Theorem 1
+in Schulman et al. (2015)) from the risk-neutral objective
+J(π) to the risk-aware objective Jλ(π), yielding the Trust
+Region Volatility Optimization (TRVO) algorithm, which is
+similar to Trust Region Policy Optimization (Schulman et al.
+2015).
+Importantly, Bisi et al. (2020) show that V(G0) ≤
+V(R)
+(1−γ)2 ,
+indicating that minimizing the variance of R implicitly min-
+imizes the variance of G0. We, therefore, can optimize
+V(R) as a proxy (upper bound) for optimizing V(G0).
+In this paper, we argue that V(R) is easier to optimize
+than V(G0). The methods of Tamar, Di Castro, and Man-
+nor (2012); Xie et al. (2018) optimizing V(G0) involve
+terms like (E[G0])2 and E[G2
+0], which lead to terms like
+G2
+0
+PT −1
+t=0 ∇θ log π(At|St) in their update rules, yielding
+large variance. In particular, it is computationally prohibitive
+to further expand G2
+0 explicitly to apply variance reduction
+techniques like baselines (Williams 1992). By contrast, we
+show in the next section that by considering V(R), MVPI
+involves only r(s, a)2, which is easier to deal with than G2
+0.
+Mean-Variance Policy Iteration
+Although in many problems our goal is to maximize the
+expected total undiscounted reward, practitioners often ﬁnd
+that optimizing the discounted objective (γ < 1) as a proxy
+for the undiscounted objective (γ = 1) is better than opti-
+mizing the undiscounted objective directly, especially when
+deep neural networks are used as function approximators
+(Mnih et al. 2015; Lillicrap et al. 2015; Espeholt et al. 2018;
+Xu, van Hasselt, and Silver 2018; Van Seijen, Fatemi, and
+Tavakoli 2019). We, therefore, focus on the discounted set-
+ting in the paper, which allows us to consider optimizing the
+variance of the per-step reward as a proxy (upper bound) for
+optimizing the variance of the total reward.
+To address the policy-dependent reward issue, we use the
+Fenchel duality to rewrite Jλ(π) as
+Jλ(π) = E[R] −λE[R2] + λ(E[R])2
+(3)
+= E[R] −λE[R2] + λ max
+y
+ 2E[R]y −y2
+,
+yielding the following problem:
+max
+π,y Jλ(π, y)
+(4)
+.=P
+s,a dπ(s, a)
+ r(s, a) −λr(s, a)2 + 2λr(s, a)y
+
+−λy2.
+We then propose a block cyclic coordinate ascent (BCCA,
+Luenberger and Ye 1984; Tseng 2001; Saha and Tewari
+2010, 2013; Wright 2015) framework to solve (4), which
+updates y and π alternatively as shown in Algorithm 1. At
+Algorithm
+1:
+Mean-Variance
+Policy
+Iteration
+(MVPI)
+for k = 1, ... do
+Step 1: yk+1 .= (1 −γ)J(πk) // The exact
+solution for arg maxyJλ(πk, y)
+Step 2:
+πk+1 .= arg maxπ
+ P
+s,a dπ(s, a)
+ r(s, a) −
+λr(s, a)2 + 2λr(s, a)yk+1
+
+−λy2
+k+1
+
+end
+the k-th iteration, we ﬁrst ﬁx πk and update yk+1 (Step 1).
+As Jλ(πk, y) is quadratic in y, yk+1 can be computed ana-
+lytically as yk+1 = P
+s,a dπk(s, a)r(s, a) = (1 −γ)J(πk),
+i.e., all we need in this step is J(πk), which is exactly the
+performance metric of the policy πk. We, therefore, refer to
+Step 1 as policy evaluation. We then ﬁx yk+1 and update
+πk+1 (Step 2). Remarkably, Step 2 can be reduced to the
+following problem:
+πk+1 = arg maxπ
+P
+s,a dπ(s, a)ˆr(s, a; yk+1),
+where ˆr(s, a; y) .= r(s, a)−λr(s, a)2 +2λr(s, a)y. In other
+words, to compute πk+1, we need to solve a new MDP,
+which is the same as the original MDP except that the reward
+function is ˆr instead of r. This new reward function ˆr does
+not depend on the policy π, avoiding the policy-dependent-
+reward issue of Bisi et al. (2020). In this step, a new policy
+πk+1 is computed. An intuitive conjecture is that this step
+is a policy improvement step, and we conﬁrm this with the
+following proposition:
+Proposition 1. (Monotonic Policy Improvement)
+∀k, Jλ(πk+1) ≥Jλ(πk).
+Though the monotonic improvement w.r.t. the objective
+Jλ(π, y) in Eq (4) follows directly from standard BCCA
+theories, Theorem 1 provides the monotonic improvement
+w.r.t. the objective Jλ(π) in Eq (3). The proof is provided
+
+
+=== PDF PAGE 4 ===
+in the appendix. Given Theorem 1, we can now consider the
+whole BCCA framework in Algorithm 1 as a policy itera-
+tion framework, which we call mean-variance policy itera-
+tion (MVPI). Let {πθ : θ ∈Θ} be the function class for
+policy optimization, we have
+Assumption 1. {θ ∈Θ, y ∈R | Jλ(θ, y) ≥Jλ(θ0)} is
+compact, where θ0 is the initial parameters.
+Assumption
+2.
+supθ∈Θ || ∂log πθ(a|s)
+∂θi∂θj
+||
+<
+∞,
+supθ∈Θ ||∇θ log πθ(a|s)|| < ∞, Θ is open and bounded.
+Proposition 2. (Convergence of MVPI with function ap-
+proximation) Under Assumptions 1 & 2, let
+yk+1 .= arg max
+y
+Jλ(θk, y),
+θk+1 .= arg max
+θ∈Θ Jλ(θ, yk+1),
+k = 0, 1, . . .
+then Jλ(θk+1) ≥Jλ(θk), {Jλ(θk)}k=1,... converges, and
+lim infk ||∇θJλ(θk)|| = 0.
+Remark 1. Assumption 1 is standard in BCCA literature
+(e.g., Theorem 4.1 in Tseng (2001)). Assumption 2 is stan-
+dard in policy optimization literature (e.g., Assumption 4.1
+in Papini et al. (2018)). Convergence in the form of lim inf
+also appears in other literature (e.g., Luenberger and Ye
+(1984); Tseng (2001); Konda (2002); Zhang et al. (2020b)).
+The proof is provided in the appendix. MVPI enjoys great
+ﬂexibility in that any policy evaluation method and risk-
+neutral control method can be dropped in off the shelf, which
+makes it possible to leverage all the advances in risk-neutral
+RL. MVPI differs from the standard policy iteration (PI, e.g.,
+see Bertsekas and Tsitsiklis (1996); Puterman (2014); Sut-
+ton and Barto (2018)) in two key ways: (1) policy evaluation
+in MVPI requires only a scalar performance metric, while
+standard policy evaluation involves computing the value of
+all states. (2) policy improvement in MVPI considers an aug-
+mented reward ˆr, which is different at each iteration, while
+standard policy improvement always considers the original
+reward. Standard PI can be used to solve the policy improve-
+ment step in MVPI.
+Average Reward Setting
+So far we have considered the total reward as the primary
+performance metric for mean-variance RL. We now show
+that MVPI can also be used when we consider the aver-
+age reward as the primary performance metric. Assuming
+the chain induced by π is ergodic and letting ¯dπ(s) be its
+stationary distribution, Filar, Kallenberg, and Lee (1989);
+Prashanth and Ghavamzadeh (2013) consider the long-run
+variance risk measure Λ(π)
+.= P
+s,a ¯dπ(s, a)
+ r(s, a) −
+¯J(π)
+2 for the average reward setting, where ¯dπ(s, a)
+.=
+¯dπ(s)π(a|s) and ¯J(π) = P
+s,a ¯dπ(s, a)r(s, a) is the aver-
+age reward. We now deﬁne a risk-aware objective
+¯Jλ(π) .= ¯J(π) −λΛ(π)
+(5)
+= max
+y
+X
+s,a
+¯dπ(s, a)ˆr(s, a; y) −λy2,
+where we have used the Fenchel duality and BCCA can take
+over to derive MVPI for the average reward setting as Algo-
+rithm 1. It is not a coincidence that the only difference be-
+tween (4) and (5) is the difference between dπ and ¯dπ. The
+root cause is that the total discounted reward of an MDP
+is always equivalent to the average reward of an artiﬁcial
+MDP (up to a constant multiplier), whose transition kernel
+is ˜p(s′|s, a) = γp(s′|s, a) + (1 −γ)µ0(s′) (e.g., see Section
+2.4 in Konda (2002) for details).
+Off-Policy Learning
+Off-policy learning has played a key role in improving data
+efﬁciency (Lin 1992; Mnih et al. 2015) and exploration (Os-
+band et al. 2016; Osband, Aslanides, and Cassirer 2018)
+in risk-neutral control algorithms. Previous mean-variance
+RL methods, however, consider only the on-policy setting
+and cannot be easily made off-policy. For example, it is
+not clear whether perturbation methods for estimating gra-
+dients (Prashanth and Ghavamzadeh 2013) can be used off-
+policy. To reweight terms like G2
+0
+PT −1
+t=0 ∇θ log π(At|St)
+from Tamar, Di Castro, and Mannor (2012); Xie et al. (2018)
+in the off-policy setting, we would need to compute the
+product of importance sampling ratios ΠT −1
+i=0
+π(ai|si)
+µ(ai|si), where
+µ is the behavior policy. This product usually suffers from
+high variance (Precup, Sutton, and Dasgupta 2001; Liu et al.
+2018) and requires knowing the behavior policy µ, both of
+which are practical obstacles in real applications. By con-
+trast, as MVPI works on an augmented MDP directly, any
+risk-neutral off-policy learning technique can be used for
+risk-averse off-policy control directly. In this paper, we con-
+sider MVPI in both on-line and off-line off-policy settings.
+On-line setting. In the on-line off-policy setting, an agent
+interacts with the environment following a behavior policy
+µ to collect transitions, which are stored into a replay buffer
+(Lin 1992) for future reuse. Mujoco robot simulation tasks
+(Brockman et al. 2016) are common benchmarks for this
+paradigm (Lillicrap et al. 2015; Haarnoja et al. 2018), and
+TD3 is a leading algorithm in Mujoco tasks. TD3 is a risk-
+neutral control algorithm, reducing the over-estimation bias
+(Hasselt 2010) of DDPG (Lillicrap et al. 2015), which is
+a neural network implementation of the deterministic pol-
+icy gradient theorem (Silver et al. 2014). Given the em-
+pirical success of TD3, we propose MVPI-TD3 for risk-
+averse control in this setting. In the policy evaluation step
+of MVPI-TD3, we set yk+1 to the average of the recent K
+rewards, where K is a hyperparameter to be tuned and we
+have assumed the policy changes slowly. Theoretically, we
+should use a weighted average as dπ(s, a) is a discounted
+distribution. Though implementing this weighted average is
+straightforward, practitioners usually ignore discounting for
+state visitation in policy gradient methods to improve sam-
+ple efﬁciency (Mnih et al. 2016; Schulman et al. 2015, 2017;
+Bacon, Harb, and Precup 2017). Hence, we do not use the
+weighted average in MVPI-TD3. In the policy improvement
+step of MVPI-TD3, we sample a mini-batch of transitions
+from the replay buffer and perform one TD3 gradient update.
+The pseudocode of MVPI-TD3 is provided in the appendix.
+Off-line setting In the off-line off-policy setting, we are
+
+
+=== PDF PAGE 5 ===
+presented with a batch of transitions {si, ai, ri, s′
+i}i=1,...,K
+and want to learn a good target policy π for control solely
+from this batch of transitions. Sometimes those transitions
+are generated by following a known behavior policy µ. But
+more commonly, those transitions are generated from mul-
+tiple unknown behavior policies, which we refer to as the
+behavior-agnostic off-policy setting (Nachum et al. 2019a).
+Namely, the state-action pairs (si, ai) are distributed accord-
+ing to some unknown distribution d, which may result from
+multiple unknown behavior policies. The successor state s′
+i
+is distributed according to p(·|si, ai) and ri = r(s, a). The
+degree of off-policyness in this setting is usually larger than
+the on-line off-policy setting.
+In the off-line off-policy setting, the policy evaluation
+step in MVPI becomes the standard off-policy evaluation
+problem (OPE, Thomas, Theocharous, and Ghavamzadeh
+(2015); Thomas and Brunskill (2016); Jiang and Li (2016);
+Liu et al. (2018)), where we want to estimate a scalar perfor-
+mance metric of a policy with off-line samples. One promis-
+ing approach to OPE is density ratio learning, where we use
+function approximation to learn the density ratio dπ(s,a)
+d(s,a) di-
+rectly, which we then use to reweight r(s, a). All off-policy
+evaluation algorithms can be integrated into MVPI in a plug-
+and-play manner. In the off-line off-policy setting, the policy
+improvement step in MVPI becomes the standard off-policy
+policy optimization problem, where we can reweight the
+canonical on-policy actor-critic (Sutton et al. 2000; Konda
+2002) with the density ratio as in Liu et al. (2019) to achieve
+off-policy policy optimization. Algorithm 2 provides an ex-
+ample of Off-line MVPI.
+In the on-line off-policy learning setting, the behavior
+policy and the target policy are usually closely correlated
+(e.g., in MVPI-TD3), we, therefore, do not need to learn the
+density ratio. In the off-line off-policy learning setting, the
+dataset may come from behavior policies that are arbitrar-
+ily different from the target policy. We, therefore, resort to
+density ratios to account for this discrepancy. Density ratio
+learning itself is an active research area and is out of scope of
+this paper. See Hallak and Mannor (2017); Liu et al. (2018);
+Gelada and Bellemare (2019); Nachum et al. (2019a); Zhang
+et al. (2020a); Zhang, Liu, and Whiteson (2020); Mousavi
+et al. (2020) for more details about density ratio learning.
+Experiments
+All curves in this section are averaged over 10 independent
+runs with shaded regions indicate standard errors. All imple-
+mentations are publicly available.1
+On-line learning setting. In many real-world robot ap-
+plications, e.g., in a warehouse, it is crucial that the robots’
+performance be consistent. In such cases, risk-averse RL is
+an appealing option to train robots. Motivated by this, we
+benchmark MVPI-TD3 on eight Mujoco robot manipula-
+tion tasks from OpenAI gym. Though Mujoco tasks have a
+stochastic initial state distribution, they are usually equipped
+with a deterministic transition kernel. To make them more
+suitable for investigating risk-averse control algorithms, we
+1https://github.com/ShangtongZhang/DeepRL
+Algorithm 2: Off-line MVPI
+Input: A batch of transitions {si, ai, ri, s′
+i}i=1,...,K,
+a learning rate α, and the number of policy updates
+T
+while True do
+Learn the density ratio ρπ(s, a) .= dπ(s,a)
+d(s,a) with
+{si, ai, ri, s′
+i}i=1,...,K
+// For example, use GradientDICE
+(Zhang, Liu, and Whiteson
+2020)
+y ←1
+K
+PK
+i=1 ρπ(si, ai)ri
+for i = 1, . . . , K do
+ˆri ←ri −λr2
+i + 2λriy
+a′
+i ∼π(·|s′
+i)
+end
+for j = 1, . . . , T do
+Learn qπ(s, a) with {si, ai, ˆri, s′
+i, a′
+i}i=1,...,K
+// For example, use TD(0)
+(Sutton 1988) in S × A
+Learn ρπ(s, a) with {si, ai, ri, s′
+i}i=1,...,K
+θ ←θ+αρπ(si, ai)∇θ log π(ai|si)qπ(si, ai),
+where i is randomly selected
+end
+end
+add a Gaussian noise N(0, 0.12) to every action. As we are
+not aware of any other off-policy mean-variance RL method,
+we use several recent on-policy mean-variance RL method
+as baselines, namely, the methods of Tamar, Di Castro, and
+Mannor (2012); Prashanth and Ghavamzadeh (2013), MVP
+(Xie et al. 2018), and TRVO (Bisi et al. 2020). The meth-
+ods of Tamar, Di Castro, and Mannor (2012); Prashanth and
+Ghavamzadeh (2013) and MVP are not designed for deep
+RL settings. To make the comparison fair, we improve those
+baselines with parallelized actors to stabilize the training of
+neural networks as in Mnih et al. (2016).2 TRVO is essen-
+tially MVPI with TRPO for the policy improvement. We,
+therefore, implement TRVO as MVPI with Proximal Policy
+Optimization (PPO, Schulman et al. 2017) to improve its
+performance. We also use the vanilla risk-neutral TD3 as a
+baseline. We use two-hidden-layer neural networks for func-
+tion approximation.
+We run each algorithm for 106 steps and evaluate the
+algorithm every 104 steps for 20 episodes. We report the
+mean of those 20 episodic returns against the training steps
+in Figure 1. The curves are generated by setting λ = 1.
+More details are provided in the appendix. The results show
+that MVPI-TD3 outperforms all risk-averse baselines in all
+tested domains (in terms of both ﬁnal episodic return and
+learning speed). Moreover, the curves of the methods from
+the total reward perspective are always ﬂat in all domains
+with only one exception that MVP achieves a reasonable
+performance in Reacher, though exhaustive hyperparam-
+2They are on-policy algorithms so we cannot use experience
+replay.
+
+
+=== PDF PAGE 6 ===
+∆TRVO
+J
+∆TRVO
+mean
+∆TRVO
+variance
+∆TRVO
+SR
+∆MVPI
+J
+∆MVPI
+mean
+∆MVPI
+variance
+∆MVPI
+SR
+InvertedP.
+-321%
+-1%
+3 · 107%
+-100%
+0%
+0%
+0%
+0%
+InvertedD.P.
+-367%
+-17%
+365%
+-62%
+42%
+1%
+-41%
+32%
+HalfCheetah
+92%
+-87%
+-92%
+-54%
+99%
+-44%
+-98%
+285%
+Walker2d
+-1%
+-61%
+0%
+-61%
+88%
+-55%
+-88%
+30%
+Swimmer
+-10%
+-7%
+18%
+-14%
+4%
+-2%
+-53%
+42%
+Hopper
+57%
+-25%
+-57%
+13%
+72%
+-3%
+-71%
+81%
+Reacher
+-48%
+-12%
+102%
+21%
+-1%
+-1%
+0%
+-1%
+Ant
+97%
+-85%
+-97%
+-18%
+96%
+-53%
+-96%
+130%
+Table 1:
+Normalized statistics of TRVO and MVPI-TD3. MVPI is shorthand for MVPI-TD3 in this table. For algo ∈
+{MVPI-TD3, TRVO, TD3}, we compute the risk-aware performance metric as Jalgo .= meanalgo −λvariancealgo with λ = 1,
+where meanalgo and variancealgo are mean and variance of the 100 evaluation episodic returns. Then we compute the nor-
+malized statistics as ∆algo
+J
+.=
+Jalgo−JTD3
+|JTD3| , ∆algo
+mean
+.=
+meanalgo−meanTD3
+|meanTD3|
+, ∆algo
+variance
+.=
+variancealgo−varianceTD3
+|varianceTD3|
+, SRalgo
+.=
+meanalgo
+√
+variancealgo ,
+∆algo
+SR
+.= SRalgo−SRTD3
+|SRTD3|
+Both MVPI-TD3 and TRVO are trained with λ = 1. All Jalgo are averaged over 10 independent runs.
+eter tuning is conducted, including λ and ξ. This means
+they fail to achieve the risk-performance trade-off in our
+tested domains, indicating that those methods are not able
+to scale up to Mujoco domains with neural network function
+approximation. Those ﬂat curves suggest that perturbation-
+based gradient estimation in Prashanth and Ghavamzadeh
+(2013) may not work well with neural networks, and the
+G2
+0
+PT −1
+t=0 ∇θ log π(at|st) term in Tamar, Di Castro, and
+Mannor (2012) and MVP may suffer from high variance,
+yielding instability. By contrast, the two algorithms from
+the per-step reward perspective (MVPI-TD3 and TRVO) do
+learn a reasonable policy, which experimentally supports our
+argument that optimizing the variance of the per-step reward
+is more efﬁcient and scalable than optimizing the variance
+of the total reward.
+As shown in Figure 1, the vanilla risk-neutral TD3 out-
+performs all risk-averse algorithms (in terms of episodic re-
+turn). This is expected as it is in general hard for a risk-
+averse algorithm to outperform its risk-neutral counterpart
+in terms of a risk-neutral performance metric. We now com-
+pare TD3, MVPI-TD3 and TRVO in terms of a risk-aware
+performance metric. To this end, we test the agent at the end
+of training for an extra 100 episodes to compute a risk-aware
+performance metric. We report the normalized statistics in
+Table 1. The results show that MVPI-TD3 outperforms TD3
+in 6 out of 8 tasks in terms of the risk-aware performance
+metric. Moreover, MVPI-TD3 outperforms TRVO in 7 out
+of 8 tasks. We also compare the algorithms in terms of the
+sharp ratio (SR, Sharpe 1966). Although none of the algo-
+rithms optimizes SR directly, MVPI-TD3 outperforms TD3
+and TRVO in 6 and 7 tasks respectively in terms of SR. This
+performance boost of MVPI-TD3 over TRVO indeed results
+from the performance boost of TD3 over PPO, and it is the
+ﬂexibility of MVPI that makes this off-the-shelf application
+TD3 in risk-averse RL possible. We also provide versions
+of Figure 1 and Table 1 with λ = 0.5 and λ = 2 in the
+appendix. The relative performance is the same as λ = 1.
+Though we propose to optimize the variance of the per-step
+reward as a proxy for optimizing the variance of the total
+reward, we also provide in the appendix curves compar-
+ing MVPI-TD3 and TRVO w.r.t. risk measures consisting of
+both mean and variance of the per-step reward. With those
+risk measures, MVPI-TD3 generally outperforms TRVO as
+well.
+Off-line learning setting. We consider an inﬁnite hori-
+zon MDP (Figure 2). Two actions a0 and a1 are avail-
+able at s0, and we have p(s3|s0, a1) = 1, p(s1|s0, a0) =
+p(s2|s0, a0) = 0.5. The discount factor is γ = 0.7 and the
+agent is initialized at s0. We consider the objective Jλ(π)
+in Eq (3). If λ = 0, the optimal policy is to choose a0. If
+λ is large enough, the optimal policy is to choose a1. We
+consider the behavior-agnostic off-policy setting, where the
+sampling distribution d satisﬁes d(s0, a0) = d(s0, a1) =
+d(s1) = d(s2) = d(s3) = 0.2. This sampling distribu-
+tion may result from multiple unknown behavior policies.
+Although the representation is tabular, we use a softmax pol-
+icy. So the problem we consider is nonlinear and noncon-
+vex. As we are not aware of any other behavior-agnostic off-
+policy risk-averse RL method, we benchmark only Off-line
+MVPI (Algorithm 2). Details are provided in the appendix.
+We report the probability of selecting a0 against training it-
+erations. As shown in Figure 3, π(a0|s0) decreases as λ in-
+creases, indicating Off-line MVPI copes well with different
+risk levels. The main challenge in Off-line MVPI rests on
+learning the density ratio. Scaling up density ratio learning
+algorithms reliably to more challenging domains like Mu-
+joco is out of the scope of this paper.
+Related Work
+Both MVPI and Bisi et al. (2020) consider the per-step re-
+ward perspective for mean-variance RL. In this work, we
+mainly use the variance of the per-step reward as a proxy
+(upper bound) for optimizing the variance of the total re-
+ward. Though TRVO in Bisi et al. (2020) is the same as
+instantiating MVPI with TRPO, the derivation is dramat-
+ically different. In particular, it is not clear whether the
+performance-lower-bound-based derivation for TRVO can
+be adopted to deterministic policies, off-policy learning, or
+other policy optimization paradigms, and this is not explored
+in Bisi et al. (2020). By contrast, MVPI is compatible with
+
+
+=== PDF PAGE 7 ===
+0
+106
+0
+500
+1000
+Episode Return
+InvertedPendulum-v2
+TD3
+MVPI-TD3
+TRVO
+MVP
+Prashanth
+Tamar
+0
+106
+0
+5000
+InvertedDoublePendulum-v2
+0
+106
+0
+5000
+HalfCheetah-v2
+0
+106
+0
+2000
+4000
+Walker2d-v2
+0
+106
+Steps
+0
+25
+Episode Return
+Swimmer-v2
+0
+106
+Steps
+0
+2000
+Hopper-v2
+0
+106
+Steps
+−50
+−25
+Reacher-v2
+0
+106
+Steps
+0
+2000
+4000
+Ant-v2
+Figure 1: Training progress of MVPI-TD3 and baseline algorithms. Curves are averaged over 10 independent runs with shaded
+regions indicating standard errors.
+0
+1
+2
+3
+a0
+a1
++1
+−1
+−1
+Figure 2: A tabular MDP
+0
+200
+Iterations
+0
+1
+π(a0|s0)
+Oﬀ-line MVPI
+λ = 0
+λ = 1
+λ = 2
+λ = 4
+λ = 8
+Figure 3: The training progress of Off-line MVPI. Curves
+are averaged over 30 independent runs with shaded regions
+indicating standard errors.
+any existing risk-neural policy optimization technique. Fur-
+thermore, MVPI works for both the total discounted reward
+setting and the average reward setting. It is not clear how the
+performance lower bound in Bisi et al. (2020), which plays a
+central role in TRVO, can be adapted to the average reward
+setting. All the advantages of MVPI over TRVO result from
+addressing the policy-dependent-reward issue in Bisi et al.
+(2020).
+While the application of Fenchel duality in RL is not new,
+previously it has been used only to address double sam-
+pling issues (e.g., Liu et al. (2015); Dai et al. (2017); Xie
+et al. (2018); Nachum et al. (2019a)). By contrast, we use
+Fenchel duality together with BCAA to address the policy-
+dependent-reward issue in Bisi et al. (2020) and derive a pol-
+icy iteration framework that appears to be novel to the RL
+community.
+Besides variance, value at risk (VaR, Chow et al. 2018),
+conditional value at risk (CVaR, Chow and Ghavamzadeh
+2014; Tamar, Glassner, and Mannor 2015; Chow et al.
+2018), sharp ratio (Tamar, Di Castro, and Mannor 2012),
+and exponential utility (Howard and Matheson 1972; Borkar
+2002) are also used for risk-averse RL. In particular, it is
+straightforward to consider exponential utility for the per-
+step reward, which, however, suffers from the same prob-
+lems as the exponential utility for the total reward, e.g., it
+overﬂows easily (Gosavi, Das, and Murray 2014).
+Conclusion
+In this paper, we propose MVPI for risk-averse RL. MVPI
+enjoys great ﬂexibility such that any policy evaluation
+method and risk-neutral control method can be dropped in
+for risk-averse control off the shelf, in both on- and off-
+policy settings. This ﬂexibility dramatically reduces the gap
+between risk-neutral control and risk-averse control. To the
+best of our knowledge, MVPI is the ﬁrst empirical success
+of risk-averse RL in Mujoco robot simulation domains, and
+is also the ﬁrst success of off-policy risk-averse RL and risk-
+averse RL with deterministic polices. Deterministic policies
+play an important role in reducing the variance of a policy
+(Silver et al. 2014). Off-policy learning is important for im-
+proving data efﬁciency (Mnih et al. 2015) and exploration
+(Osband, Aslanides, and Cassirer 2018). Incorporating those
+two elements in risk-averse RL appears novel and is key to
+the observed performance improvement.
+Possibilities for future work include considering other risk
+measures (e.g., VaR and CVaR) of the per-step reward ran-
+dom variable, integrating more advanced off-policy policy
+optimization techniques (e.g., Nachum et al. 2019b) in off-
+
+
+=== PDF PAGE 8 ===
+policy MVPI, optimizing λ with meta-gradients (Xu, van
+Hasselt, and Silver 2018), analyzing the sample complexity
+of MVPI, and developing theory for approximate MVPI.
+References
+Bacon, P.-L.; Harb, J.; and Precup, D. 2017. The option-critic ar-
+chitecture. In Proceedings of the 31st AAAI Conference on Artiﬁ-
+cial Intelligence.
+Bertsekas, D. 1995. Nonlinear Programming. Athena Scientiﬁc.
+Bertsekas, D. P.; and Tsitsiklis, J. N. 1996. Neuro-Dynamic Pro-
+gramming. Athena Scientiﬁc Belmont, MA.
+Bhatnagar, S.; Prasad, H.; and Prashanth, L. 2013. Stochastic Re-
+cursive Algorithms for Optimization. Springer London.
+Bisi, L.; Sabbioni, L.; Vittori, E.; Papini, M.; and Restelli, M. 2020.
+Risk-Averse Trust Region Optimization for Reward-Volatility Re-
+duction. In Proceedings of the 29th International Joint Conference
+on Artiﬁcial Intelligence. Special Track on AI in FinTech.
+Borkar, V. S. 2002. Q-learning for risk-sensitive control. Mathe-
+matics of operations research .
+Brockman, G.; Cheung, V.; Pettersson, L.; Schneider, J.; Schulman,
+J.; Tang, J.; and Zaremba, W. 2016. Openai gym. arXiv preprint
+arXiv:1606.01540 .
+Chow, Y. 2017. Risk-Sensitive and Data-Driven Sequential Deci-
+sion Making. Ph.D. thesis, Stanford University.
+Chow, Y.; and Ghavamzadeh, M. 2014. Algorithms for CVaR opti-
+mization in MDPs. In Advances in Neural Information Processing
+Systems.
+Chow, Y.; Ghavamzadeh, M.; Janson, L.; and Pavone, M. 2018.
+Risk-constrained reinforcement learning with percentile risk crite-
+ria. The Journal of Machine Learning Research .
+Dai, B.; Shaw, A.; Li, L.; Xiao, L.; He, N.; Liu, Z.; Chen,
+J.; and Song, L. 2017.
+SBEED: Convergent reinforcement
+learning with nonlinear function approximation.
+arXiv preprint
+arXiv:1712.10285 .
+Dhariwal, P.; Hesse, C.; Klimov, O.; Nichol, A.; Plappert, M.; Rad-
+ford, A.; Schulman, J.; Sidor, S.; Wu, Y.; and Zhokhov, P. 2017.
+OpenAI Baselines. https://github.com/openai/baselines.
+Espeholt, L.; Soyer, H.; Munos, R.; Simonyan, K.; Mnih, V.; Ward,
+T.; Doron, Y.; Firoiu, V.; Harley, T.; Dunning, I.; et al. 2018. Im-
+pala: Scalable distributed deep-rl with importance weighted actor-
+learner architectures. arXiv preprint arXiv:1802.01561 .
+Filar, J. A.; Kallenberg, L. C.; and Lee, H.-M. 1989. Variance-
+penalized Markov decision processes. Mathematics of Operations
+Research .
+Fujimoto, S.; van Hoof, H.; and Meger, D. 2018. Addressing func-
+tion approximation error in actor-critic methods. arXiv preprint
+arXiv:1802.09477 .
+Gelada, C.; and Bellemare, M. G. 2019. Off-Policy Deep Rein-
+forcement Learning by Bootstrapping the Covariate Shift. In Pro-
+ceedings of the 33rd AAAI Conference on Artiﬁcial Intelligence.
+Gosavi, A. A.; Das, S. K.; and Murray, S. L. 2014. Beyond ex-
+ponential utility functions: A variance-adjusted approach for risk-
+averse reinforcement learning. In 2014 IEEE Symposium on Adap-
+tive Dynamic Programming and Reinforcement Learning.
+Haarnoja, T.; Zhou, A.; Abbeel, P.; and Levine, S. 2018. Soft actor-
+critic: Off-policy maximum entropy deep reinforcement learning
+with a stochastic actor. arXiv preprint arXiv:1801.01290 .
+Hallak, A.; and Mannor, S. 2017.
+Consistent on-line off-policy
+evaluation. In Proceedings of the 34th International Conference
+on Machine Learning.
+Hasselt, H. V. 2010. Double Q-learning. In Advances in neural
+information processing systems.
+Howard, R. A.; and Matheson, J. E. 1972. Risk-sensitive Markov
+decision processes. Management Science .
+Jiang, N.; and Li, L. 2016. Doubly robust off-policy value evalu-
+ation for reinforcement learning. In International Conference on
+Machine Learning.
+Konda, V. R. 2002. Actor-critic algorithms. Ph.D. thesis, Mas-
+sachusetts Institute of Technology.
+Lai, T. L.; Xing, H.; Chen, Z.; et al. 2011. Mean-variance portfo-
+lio optimization when means and covariances are unknown. The
+Annals of Applied Statistics .
+Li, D.; and Ng, W.-L. 2000. Optimal dynamic portfolio selection:
+Multiperiod mean-variance formulation. Mathematical ﬁnance .
+Lillicrap, T. P.; Hunt, J. J.; Pritzel, A.; Heess, N.; Erez, T.; Tassa,
+Y.; Silver, D.; and Wierstra, D. 2015. Continuous control with deep
+reinforcement learning. arXiv preprint arXiv:1509.02971 .
+Lin, L.-J. 1992. Self-improving reactive agents based on reinforce-
+ment learning, planning and teaching. Machine Learning .
+Liu, B.; Liu, J.; Ghavamzadeh, M.; Mahadevan, S.; and Petrik, M.
+2015.
+Finite-Sample Analysis of Proximal Gradient TD Algo-
+rithms. In Proceedings of the 31st Conference on Uncertainty in
+Artiﬁcial Intelligence.
+Liu, Q.; Li, L.; Tang, Z.; and Zhou, D. 2018. Breaking the curse
+of horizon: Inﬁnite-horizon off-policy estimation. In Advances in
+Neural Information Processing Systems.
+Liu, Y.; Swaminathan, A.; Agarwal, A.; and Brunskill, E. 2019.
+Off-Policy Policy Gradient with State Distribution Correction.
+arXiv preprint arXiv:1904.08473 .
+Luenberger, D. G.; and Ye, Y. 1984. Linear and nonlinear pro-
+gramming (3rd Edition). Springer.
+Maei, H. R. 2011.
+Gradient temporal-difference learning algo-
+rithms. Ph.D. thesis, University of Alberta.
+Majumdar, A.; and Pavone, M. 2020. How should a robot assess
+risk? Towards an axiomatic theory of risk in robotics. In Robotics
+Research. Springer.
+Mannor, S.; and Tsitsiklis, J. 2011. Mean-variance optimization in
+Markov decision processes. arXiv preprint arXiv:1104.5601 .
+Markowitz, H. M.; and Todd, G. P. 2000. Mean-variance analysis
+in portfolio choice and capital markets. John Wiley & Sons.
+Maurer, M.; Christian Gerdes, J.; Lenz, B.; and Winner, H. 2016.
+Autonomous driving: technical, legal and social aspects. Springer
+Nature.
+Mnih, V.; Badia, A. P.; Mirza, M.; Graves, A.; Lillicrap, T.; Harley,
+T.; Silver, D.; and Kavukcuoglu, K. 2016. Asynchronous meth-
+ods for deep reinforcement learning. In Proceedings of the 33rd
+International Conference on Machine Learning.
+Mnih, V.; Kavukcuoglu, K.; Silver, D.; Rusu, A. A.; Veness, J.;
+Bellemare, M. G.; Graves, A.; Riedmiller, M.; Fidjeland, A. K.;
+Ostrovski, G.; et al. 2015. Human-level control through deep rein-
+forcement learning. Nature .
+Mousavi, A.; Li, L.; Liu, Q.; and Zhou, D. 2020. Black-box Off-
+policy Estimation for Inﬁnite-Horizon Reinforcement Learning. In
+International Conference on Learning Representations.
+
+
+=== PDF PAGE 9 ===
+Nachum, O.; Chow, Y.; Dai, B.; and Li, L. 2019a.
+DualDICE:
+Behavior-Agnostic Estimation of Discounted Stationary Distribu-
+tion Corrections. arXiv preprint arXiv:1906.04733 .
+Nachum, O.; Dai, B.; Kostrikov, I.; Chow, Y.; Li, L.; and Schu-
+urmans, D. 2019b. AlgaeDICE: Policy Gradient from Arbitrary
+Experience. arXiv preprint arXiv:1912.02074 .
+Osband, I.; Aslanides, J.; and Cassirer, A. 2018. Randomized prior
+functions for deep reinforcement learning. In Advances in Neural
+Information Processing Systems.
+Osband, I.; Blundell, C.; Pritzel, A.; and Van Roy, B. 2016. Deep
+exploration via bootstrapped DQN. In Advances in Neural Infor-
+mation Processing Systems.
+Papini, M.; Binaghi, D.; Canonaco, G.; Pirotta, M.; and Restelli, M.
+2018. Stochastic variance-reduced policy gradient. arXiv preprint
+arXiv:1806.05618 .
+Parker, D. 2009. Managing risk in healthcare: understanding your
+safety culture using the Manchester Patient Safety Framework
+(MaPSaF). Journal of nursing management .
+Prashanth, L.; and Ghavamzadeh, M. 2013. Actor-critic algorithms
+for risk-sensitive MDPs. In Advances in neural information pro-
+cessing systems.
+Precup, D.; Sutton, R. S.; and Dasgupta, S. 2001.
+Off-policy
+temporal-difference learning with function approximation. In Pro-
+ceedings of the 18th International Conference on Machine Learn-
+ing.
+Puterman, M. L. 2014.
+Markov decision processes: discrete
+stochastic dynamic programming. John Wiley & Sons.
+Saha, A.; and Tewari, A. 2010.
+On the ﬁnite time conver-
+gence of cyclic coordinate descent methods.
+arXiv preprint
+arXiv:1005.2146 .
+Saha, A.; and Tewari, A. 2013. On the nonasymptotic convergence
+of cyclic coordinate descent methods. SIAM Journal on Optimiza-
+tion 23(1): 576–601.
+Schulman, J.; Levine, S.; Abbeel, P.; Jordan, M.; and Moritz, P.
+2015. Trust region policy optimization. In Proceedings of the 32nd
+International Conference on Machine Learning.
+Schulman, J.; Wolski, F.; Dhariwal, P.; Radford, A.; and Klimov,
+O. 2017. Proximal policy optimization algorithms. arXiv preprint
+arXiv:1707.06347 .
+Senior, A.; Jumper, J.; and Hassabis, D. 2018.
+AlphaFold: Us-
+ing AI for scientiﬁc discovery.
+DeepMind. Recuperado de:
+https://deepmind. com/blog/alphafold .
+Sharpe, W. F. 1966. Mutual fund performance. The Journal of
+business .
+Silver, D.; Huang, A.; Maddison, C. J.; Guez, A.; Sifre, L.; Van
+Den Driessche, G.; Schrittwieser, J.; Antonoglou, I.; Panneershel-
+vam, V.; Lanctot, M.; et al. 2016. Mastering the game of Go with
+deep neural networks and tree search. Nature .
+Silver, D.; Lever, G.; Heess, N.; Degris, T.; Wierstra, D.; and Ried-
+miller, M. 2014. Deterministic policy gradient algorithms. In Pro-
+ceedings of the 31st International Conference on Machine Learn-
+ing.
+Sobel, M. J. 1982. The variance of discounted Markov decision
+processes. Journal of Applied Probability .
+Sutton, R. S. 1988. Learning to predict by the methods of temporal
+differences. Machine Learning .
+Sutton, R. S.; and Barto, A. G. 2018. Reinforcement Learning: An
+Introduction (2nd Edition). MIT press.
+Sutton, R. S.; McAllester, D. A.; Singh, S. P.; and Mansour, Y.
+2000.
+Policy gradient methods for reinforcement learning with
+function approximation. In Advances in Neural Information Pro-
+cessing Systems.
+Tamar, A.; Di Castro, D.; and Mannor, S. 2012. Policy gradients
+with variance related risk criteria. arXiv preprint arXiv:1206.6404
+.
+Tamar, A.; Glassner, Y.; and Mannor, S. 2015.
+Optimizing the
+CVaR via sampling. In Proceedings of the 29th AAAI Conference
+on Artiﬁcial Intelligence.
+Thomas, P.; and Brunskill, E. 2016. Data-efﬁcient off-policy policy
+evaluation for reinforcement learning. In International Conference
+on Machine Learning, 2139–2148.
+Thomas, P. S.; Theocharous, G.; and Ghavamzadeh, M. 2015.
+High-conﬁdence off-policy evaluation. In Twenty-Ninth AAAI Con-
+ference on Artiﬁcial Intelligence.
+Tseng, P. 2001. Convergence of a block coordinate descent method
+for nondifferentiable minimization. Journal of optimization theory
+and applications 109(3): 475–494.
+Van Seijen, H.; Fatemi, M.; and Tavakoli, A. 2019. Using a Loga-
+rithmic Mapping to Enable Lower Discount Factors in Reinforce-
+ment Learning. In Advances in Neural Information Processing Sys-
+tems.
+Vinyals, O.; Babuschkin, I.; Czarnecki, W. M.; Mathieu, M.;
+Dudzik, A.; Chung, J.; Choi, D. H.; Powell, R.; Ewalds, T.;
+Georgiev, P.; et al. 2019. Grandmaster level in StarCraft II using
+multi-agent reinforcement learning. Nature .
+Wang, S. S. 2000. A class of distortion operators for pricing ﬁnan-
+cial and insurance risks. Journal of risk and insurance .
+Watkins, C. J.; and Dayan, P. 1992. Q-learning. Machine Learning
+.
+Williams, R. J. 1992. Simple statistical gradient-following algo-
+rithms for connectionist reinforcement learning. Machine learning
+.
+Wright, S. J. 2015. Coordinate descent algorithms. Mathematical
+Programming 151(1): 3–34.
+Xie, T.; Liu, B.; Xu, Y.; Ghavamzadeh, M.; Chow, Y.; Lyu, D.;
+and Yoon, D. 2018. A block coordinate ascent algorithm for mean-
+variance optimization. In Advances in Neural Information Process-
+ing Systems.
+Xu, Z.; van Hasselt, H. P.; and Silver, D. 2018. Meta-gradient rein-
+forcement learning. In Advances in neural information processing
+systems.
+Zhang, R.; Dai, B.; Li, L.; and Schuurmans, D. 2020a. GenDICE:
+Generalized Ofﬂine Estimation of Stationary Values. In Interna-
+tional Conference on Learning Representations.
+Zhang, S.; Liu, B.; and Whiteson, S. 2020. GradientDICE: Re-
+thinking Generalized Ofﬂine Estimation of Stationary Values. In
+Proceedings of the 37th International Conference on Machine
+Learning.
+Zhang, S.; Liu, B.; Yao, H.; and Whiteson, S. 2020b. Provably
+Convergent Two-Timescale Off-Policy Actor-Critic with Function
+Approximation. In Proceedings of the 37th International Confer-
+ence on Machine Learning.
+
+
+=== PDF PAGE 10 ===
+Proofs
+Proof of Proposition 1
+Proof.
+Jλ(πk+1)
+=
+X
+s,a
+dπk+1(s, a)(r(s, a) −λr(s, a)2) + λ max
+y (2
+X
+s,a
+dπk+1(s, a)r(s, a)y −y2)
+≥
+X
+s,a
+dπk+1(s, a)(r(s, a) −λr(s, a)2) + λ(2
+X
+s,a
+dπk+1(s, a)r(s, a)yk+1 −y2
+k+1)
+=
+X
+s,a
+dπk+1(s, a)
+ r(s, a) −λr(s, a)2 + 2λr(s, a)yk+1
+
+−λy2
+k+1
+≥
+X
+s,a
+dπk(s, a)
+ r(s, a) −λr(s, a)2 + 2λr(s, a)yk+1
+
+−λy2
+k+1
+(By deﬁnition, πk+1 is the maximizer.)
+=
+X
+s,a
+dπk(s, a)(r(s, a) −λr(s, a)2) + λ(2
+X
+s,a
+dπk(s, a)r(s, a)yk+1 −y2
+k+1)
+=
+X
+s,a
+dπk(s, a)(r(s, a) −λr(s, a)2) + λ max
+y (2
+X
+s,a
+dπk(s, a)r(s, a)y −y2)
+(By deﬁnition, yk+1 is the maximizer of the quadratic.)
+=Jλ(πk)
+Proof of Proposition 2
+Lemma 1. Under Assumption 2, ∇θJλ(θ) is Lipschitz continuous in θ.
+Proof. By deﬁnition,
+∇Jλ(θ) = ∇E[R] −∇λE[R2] + 2λE[R]∇E[R].
+The policy gradient theorem (Sutton et al. 2000) and the boundedness of ∇log πθ(a|s) imply that ∇E[R] is bounded. So E[R]
+is Lipschitz continuous. Lemma B.2 in Papini et al. (2018) shows that the Hessian of E[R] is bounded. So ∇E[R] is Lipschitz
+continuous. So does ∇E[R2]. Together with the boundedness of E[R], it is easy to see ∇Jλ(θ) is Lipschitz continuous.
+We now prove Proposition 2.
+Proof. Under Assumption 1, Theorem 4.1(c) in Tseng (2001) shows that the limit of any convergent subsequence
+{(θk, yk)}k∈K, referred to as (θK, yK), satisﬁes ∇θJλ(θK, yK) = 0 and ∇yJλ(θK, yK) = 0. In particular, that Theorem
+4.1(c) is developed for general block coordinate ascent algorithms with M blocks. Our MVPI is a special case with two blocks
+(i.e., θ and y). With only two blocks, the conclusion of Theorem 4.1(c) follows immediately from Eq (7) and Eq (8) in Tseng
+(2001), without involving the assumption that the maximizers of the M −2 blocks are unique.
+As Jλ(θ, y) is quadratic in y, ∇yJλ(θK, yK) = 0 implies yK = arg maxy Jλ(θK, y) = (1 −γ)J(θK). Recall the Fenchel
+duality x2 = maxz f(x, z), where f(x, z) .= 2xz −z2. Applying Danskin’s theorem (Proposition B.25 in Bertsekas (1995)) to
+Fenchel duality yields
+∂x2
+∂x = ∂f(x, arg maxz f(x, z))
+∂x
+.
+(6)
+Note Danskin’s theorem shows that we can treat arg maxz f(x, z) as a constant independent of x when computing the gradients
+in the RHS of Eq (6). Applying Danskin’s theorem in the Fenchel duality used in Eq (3) yields
+∇θJλ(θK) = ∇θJλ(θK, yK) = 0.
+(7)
+Eq (7) can also be easily veriﬁed without invoking Danskin’s theorem by expanding the gradients explicitly. Eq (7) indicates
+that the subsequence {θk}k∈K converges to a stationary point of Jλ(θ).
+
+
+=== PDF PAGE 11 ===
+Theorem 1 establishes the monotonic policy improvement when we search over all possible policies (The arg max of Step
+2 in Algorithm 1 is taken over all possible policies). Fortunately, the proof of Theorem 1 can also be used (up to a change of
+notation) to establish that
+Jλ(θk+1) ≥Jλ(θk).
+(8)
+In other words, the monotonic policy improvement also holds when we search over Θ. Eq (8) and the fact that Jλ(θ) is bounded
+from above imply that {Jλ(θk)}k=1,... converges to some J∗.
+Let Θ0 .= {θ ∈Θ | Jλ(θ) ≥Jλ(θ0)}. We ﬁrst show Θ0 is compact. Let {θi}i=1,... be any convergent sequence in Θ0 and
+θ∞be its limit. We deﬁne yi .= arg maxy Jλ(θi, y) = (1 −γ)J(θi) for i = 1, . . . , ∞. The proof of Lemma 1 shows J(θ) is
+Lipschitz continuous in θ, indicating {θi, yi} converges to {θ∞, y∞}. As Jλ(θi, yi) = Jλ(θi) ≥Jλ(θ0), Assumption 1 implies
+Jλ(θ∞, y∞) ≥Jλ(θ0), i.e., Jλ(θ∞) ≥Jλ(θ0), θ∞∈Θ0. So Θ0 is compact. As {θk} is contained in Θ0, there must exist a
+convergent subsequence, indicating
+lim inf
+k ||∇θJλ(θk)|| = 0.
+Experiment Details
+The pseudocode of MVPI-TD3 and our TRVO (MVPI-PPO) are provide in Algorithms 3 and 4 respectively.
+Algorithm 3: MVPI-TD3
+Input:
+θ, ψ: parameters for the deterministic policy π and the value function qπ
+K: number of recent rewards for estimating the policy performance
+λ: weight of the variance penalty
+Initialize the replay buffer M
+Initialize S0
+for t = 0, . . . , do
+At ←π(St) + N(0, σ2)
+Execute At, get Rt+1, St+1
+Store (St, At, Rt+1, St+1) into M
+y ←1
+K
+Pt+1
+i=t−K+2 Rt
+Sample a mini-batch {si, ai, ri, s′
+i}i=1,...,N from M
+for i = 1, . . . , N do
+ˆri ←ri −λr2
+i + 2λriy
+end
+Use TD3 with {si, ai, ˆri, s′
+i}i=1,...,N to optimize θ and ψ
+t ←t + 1
+end
+Task Selection: We use eight Mujoco tasks from Open AI gym 3(Brockman et al. 2016) and implement the tabular MDP in
+Figure 3a by ourselves.
+Function Parameterization: For MVPI-TD3 and TD3, we use the same network architecture as Fujimoto, van Hoof, and
+Meger (2018). For TRVO (MVPI-PPO), the methods of Tamar, Di Castro, and Mannor (2012); Prashanth and Ghavamzadeh
+(2013), and MVP, we use the same network architecture as Schulman et al. (2017).
+Hyperparameter Tuning: For MVPI-TD3 and TD3, we use the same hyperparameters as Fujimoto, van Hoof, and Meger
+(2018). In particular, for MVPI-TD3, we set K = 104. For TRVO (MVPI-PPO), we use the same hyperparameters as Schulman
+et al. (2017). We implement the methods of Prashanth and Ghavamzadeh (2013); Tamar, Di Castro, and Mannor (2012) and
+MVP with multiple parallelized actors like A2C in Dhariwal et al. (2017) and inherit the common hyperparameters from
+Dhariwal et al. (2017).
+Hyperparameters of Prashanth and Ghavamzadeh (2013): To increase stability, we treat λ as a hyperparameter in-
+stead of a variable. Consequently, ξ does not matter. We tune λ from {0.5, 1, 2}. We set the perturbation β in Prashanth and
+Ghavamzadeh (2013) to 10−4. We use 16 parallelized actors. The initial learning rate of the RMSprop optimizer is 7 × 10−5,
+3https://gym.openai.com/
+
+
+=== PDF PAGE 12 ===
+Algorithm 4: MVPI-PPO
+Input:
+θ, ψ: parameters for the policy π and the value function vπ
+K, λ: rollout length and weight for variance
+while True do
+Empty a buffer M
+Run π for K steps in the environment, storing {si, ai, ri, si+1}i=1,...,K into M
+y ←1
+K
+PK
+i=1 ri
+for i = 1, . . . , K do
+ˆri ←ri −λr2
+i + 2λriy
+end
+Use PPO with {si, ai, ˆri, si+1}i=1,...,K to optimize θ and ψ
+end
+tuned from {7 × 10−5, 7 × 10−4, 7 × 10−3}. We also test the Adam optimizer, which performs the same as the RMSprop op-
+timizer. We use policy entropy as a regularization term, whose weight is 0.01. The discount factor is 0.99. We clip the gradient
+by norm with a threshold 0.5.
+Hyperparameters of Tamar, Di Castro, and Mannor (2012): We tune λ from {0.5, 1, 2}. We use ξ = 50, tuned from
+{1, 10, 50, 100}. We set the initial learning rate of the RMSprop optimizer to 7 × 10−4, tuned from {7 × 10−5, 7 × 10−4, 7 ×
+10−3}. We also test the Adam optimizer, which performs the same as the RMSprop optimizer. The learning rates for the running
+estimates of E[G0] and V(G0) is 100 times of the initial learning rate of the RMSprop optimizer. We use 16 parallelized actors.
+We use policy entropy as a regularization term, whose weight is 0.01. We clip the gradient by norm with a threshold 0.5.
+Hyperparameters of Xie et al. (2018): We tune λ from {0.5, 1, 2}. We set the initial learning rate of the RMSprop optimizer
+to 7 × 10−4, tuned from {7 × 10−5, 7 × 10−4, 7 × 10−3}. We also test the Adam optimizer, which performs the same as the
+RMSprop optimizer. We use 16 parallelized actors. We use policy entropy as a regularization term, whose weight is 0.01. We
+clip the gradient by norm with a threshold 0.5.
+Computing Infrastructure: We conduct our experiments on an Nvidia DGX-1 with PyTorch, though no GPU is used.
+In our off-line off-policy experiments, we set K to 103 and use tabular representation for ρπ, qπ. For π, we use a softmax
+policy with tabular logits.
+Other Experimental Results
+We report the empirical results with λ = 0.5 and λ = 2 in Figure 4, Table 2, Figure 5, and Table 3. We report the empirical
+results comparing MVPI-TD3 and TRVO w.r.t. Jreward in Figures 6, 7, and 8. For an algorithm, Jreward is deﬁned as
+Jreward .= mean({ri}) −λvariance({ri}),
+where {ri} are the rewards during the evaluation episodes. We do not use the γ-discounted reward in computing Jreward because
+we use the direct average for the policy evaluation step in both MVPI-TD3 and TRVO.
+∆TRVO
+J
+∆TRVO
+mean
+∆TRVO
+variance
+∆TRVO
+SR
+∆MVPI
+J
+∆MVPI
+mean
+∆MVPI
+variance
+∆MVPI
+SR
+InvertedP.
+-571%
+-2%
+108%
+-100%
+0%
+0%
+0%
+0%
+InvertedD.P.
+-269%
+-31%
+266%
+-64%
+4%
+9%
+-4%
+11%
+HalfCheetah
+81%
+-82%
+-81%
+-59%
+97%
+-40%
+-96%
+188%
+Walker2d
+-17%
+-49%
+15%
+-52%
+81%
+-37%
+-80%
+41%
+Swimmer
+-2%
+8%
+165%
+-34%
+1%
+-3%
+-69%
+76%
+Hopper
+-9%
+-17%
+9%
+-20%
+94%
+27%
+-93%
+364%
+Reacher
+-34%
+-13%
+98%
+20%
+-12%
+-5%
+35%
+10%
+Ant
+94%
+-80%
+-94%
+-19%
+80%
+-41%
+-80%
+32%
+Table 2: Table 1 with λ = 0.5.
+
+
+=== PDF PAGE 13 ===
+0
+106
+0
+200
+400
+600
+800
+1000
+Episode Return
+InvertedPendulum-v2
+TD3
+MVPI-TD3
+TRVO
+MVP
+Prashanth
+Tamar
+0
+106
+0
+2000
+4000
+6000
+8000
+InvertedDoublePendulum-v2
+0
+106
+0
+2000
+4000
+6000
+8000
+HalfCheetah-v2
+0
+106
+0
+1000
+2000
+3000
+4000
+5000
+Walker2d-v2
+0
+106
+Steps
+0
+20
+40
+Episode Return
+Swimmer-v2
+0
+106
+Steps
+0
+1000
+2000
+3000
+Hopper-v2
+0
+106
+Steps
+−60
+−50
+−40
+−30
+−20
+−10
+Reacher-v2
+0
+106
+Steps
+0
+1000
+2000
+3000
+4000
+Ant-v2
+Figure 4: Figure 1 with λ = 0.5.
+0
+106
+0
+200
+400
+600
+800
+1000
+Episode Return
+InvertedPendulum-v2
+TD3
+MVPI-TD3
+TRVO
+MVP
+Prashanth
+Tamar
+0
+106
+0
+2000
+4000
+6000
+8000
+InvertedDoublePendulum-v2
+0
+106
+0
+2000
+4000
+6000
+8000
+HalfCheetah-v2
+0
+106
+0
+1000
+2000
+3000
+4000
+5000
+Walker2d-v2
+0
+106
+Steps
+0
+20
+40
+Episode Return
+Swimmer-v2
+0
+106
+Steps
+0
+1000
+2000
+3000
+Hopper-v2
+0
+106
+Steps
+−60
+−40
+−20
+Reacher-v2
+0
+106
+Steps
+0
+1000
+2000
+3000
+4000
+Ant-v2
+Figure 5: Figure 1 with λ = 2.
+∆TRVO
+J
+∆TRVO
+mean
+∆TRVO
+variance
+∆TRVO
+SR
+∆MVPI
+J
+∆MVPI
+mean
+∆MVPI
+variance
+∆MVPI
+SR
+InvertedP.
+-4130%
+-5%
+2 · 108%
+-100%
+0%
+0%
+0%
+0%
+InvertedD.P.
+-399%
+-13%
+398%
+-61%
+77%
+-31%
+-77%
+44%
+HalfCheetah
+98%
+-84%
+-98%
+0%
+96%
+-66%
+-95%
+60%
+Walker2d
+47%
+-71%
+-48%
+-60%
+91%
+-65%
+-91%
+16%
+Swimmer
+-210%
+-23%
+619%
+-71%
+-6%
+-7%
+-13%
+-1%
+Hopper
+64%
+-31%
+-64%
+15%
+90%
+-18%
+-89%
+152%
+Reacher
+-43%
+-2%
+74%
+23%
+0%
+1%
+1%
+1%
+Ant
+97%
+-94%
+-97%
+-65%
+97%
+-63%
+-97%
+101%
+Table 3: Table 1 with λ = 2.
+
+
+=== PDF PAGE 14 ===
+0
+106
+0.96
+0.98
+1.00
+1.02
+1.04
+Jreward
+InvertedPendulum-v2
+MVPI-TD3
+TRVO
+0
+106
+9.1
+9.2
+9.3
+InvertedDoublePendulum-v2
+0
+106
+0
+1
+2
+3
+4
+HalfCheetah-v2
+0
+106
+0
+1
+2
+Walker2d-v2
+0
+106
+Steps
+−0.100
+−0.075
+−0.050
+−0.025
+0.000
+0.025
+Jreward
+Swimmer-v2
+0
+106
+Steps
+1.0
+1.5
+2.0
+2.5
+3.0
+Hopper-v2
+0
+106
+Steps
+−1.0
+−0.8
+−0.6
+−0.4
+−0.2
+Reacher-v2
+0
+106
+Steps
+0
+1
+2
+Ant-v2
+Figure 6: Comparing MVPI-TD3 and TRVO in terms of Jreward with λ = 0.5
+0
+106
+0.96
+0.98
+1.00
+1.02
+1.04
+Jreward
+InvertedPendulum-v2
+MVPI-TD3
+TRVO
+0
+106
+9.1
+9.2
+9.3
+InvertedDoublePendulum-v2
+0
+106
+0
+1
+2
+3
+HalfCheetah-v2
+0
+106
+0.0
+0.5
+1.0
+1.5
+2.0
+Walker2d-v2
+0
+106
+Steps
+−0.15
+−0.10
+−0.05
+0.00
+Jreward
+Swimmer-v2
+0
+106
+Steps
+0.5
+1.0
+1.5
+2.0
+2.5
+Hopper-v2
+0
+106
+Steps
+−1.2
+−1.0
+−0.8
+−0.6
+−0.4
+−0.2
+Reacher-v2
+0
+106
+Steps
+−1
+0
+1
+Ant-v2
+Figure 7: Comparing MVPI-TD3 and TRVO in terms of Jreward with λ = 1
+0
+106
+0.96
+0.98
+1.00
+1.02
+1.04
+Jreward
+InvertedPendulum-v2
+MVPI-TD3
+TRVO
+0
+106
+9.0
+9.1
+9.2
+9.3
+InvertedDoublePendulum-v2
+0
+106
+−1
+0
+1
+2
+HalfCheetah-v2
+0
+106
+−0.5
+0.0
+0.5
+1.0
+1.5
+Walker2d-v2
+0
+106
+Steps
+−0.4
+−0.3
+−0.2
+−0.1
+0.0
+Jreward
+Swimmer-v2
+0
+106
+Steps
+0.5
+1.0
+1.5
+2.0
+Hopper-v2
+0
+106
+Steps
+−1.50
+−1.25
+−1.00
+−0.75
+−0.50
+−0.25
+Reacher-v2
+0
+106
+Steps
+−2
+−1
+0
+1
+Ant-v2
+Figure 8: Comparing MVPI-TD3 and TRVO in terms of Jreward with λ = 2
