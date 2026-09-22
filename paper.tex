@@ -8,6 +8,7 @@
 \usepackage{enumitem}
 \usepackage{graphicx}
 \usepackage[round,authoryear]{natbib}
+\usepackage{longtable,array,url,placeins}
 \usepackage[hidelinks]{hyperref}
 \usepackage[protrusion=true,expansion=false]{microtype}
 
@@ -27,969 +28,702 @@
 \newcommand{\Var}{\operatorname{Var}}
 \newcommand{\pipre}{\pi^{\mathrm{pre}}}
 \newcommand{\pieq}{\pi^{\mathrm{eq}}}
-\newcommand{\pir}{\pi^{\kappa}}
+\newcommand{\pir}{\pi^{r}}
 \newcommand{\pihat}{\widehat{\pi}}
 \newcommand{\epsincons}{\varepsilon_{\mathrm{incons}}}
 \newcommand{\epssurr}{\varepsilon_{\mathrm{surr}}}
 \newcommand{\epslearn}{\varepsilon_{\mathrm{learn}}}
 
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\setlength{\emergencystretch}{2em}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.1}
+\renewcommand{\floatpagefraction}{0.7}
 \title{\vspace{-2em}What Additive Risk-Adjusted Rewards Optimise\\
 in Reinforcement Learning for Asset Allocation}
 \author{Matin Tavakoli}
-\date{Working draft --- \today}
-
+\date{Working draft --- 22 September 2026}
 \begin{document}
 \maketitle
 \vspace{-1em}
 
+
 \begin{abstract}
-\noindent
-Reinforcement learning applied to multi-period asset allocation typically encodes
-risk into a per-period reward---a Sharpe ratio, a variance penalty---and maximises
-the sum of those rewards. The resulting objective is not the mean-variance
-criterion it is meant to represent. That the two formulations differ is known in
-the portfolio-choice literature; what is quantified here is the map between them.
 
-For an i.i.d.\ market and the variance-penalised reward $r_t=d_t-\kappa d_t^2$,
-with $d_t$ the wealth increment, we show that the maximiser of the additive
-objective solves a backward recursion whose multi-asset form reduces exactly to a
-scalar one through $\nu=m^{\top}M^{-1}m$. Using this we prove that when the gross
-riskless return is $1$, the additive surrogate reproduces the equilibrium
-mean-variance policy \emph{exactly}, at
-\[
-\kappa^{\star}=\varphi(1-\nu),
-\]
-and not at $\kappa=\varphi$. We further prove that for a one-period horizon the
-two policies can always be matched, so any irreducible discrepancy is a
-multi-period phenomenon; and that for a two-period horizon with a non-unit
-riskless return the minimal attainable policy distance is
-$c\,|s-1|+O((s-1)^2)$ with $c$ in closed form. Numerically the linear rate
-persists at longer horizons.
+\noindent We study the policy induced by additive quadratic wealth-increment rewards relative to terminal mean--variance equilibrium in a controlled discrete-time market. We establish a fixed-horizon local coefficient for the irreducible mismatch of the scalar-penalty family, construct a terminal-unit reward that exactly recovers equilibrium under independent return moments, and derive the missing continuation hedge under observed Markov dependence. Exact and finite-grid comparisons adapt rewards from financial RL papers, while a separate five-seed learning study quantifies optimisation error. We find strong exact alignment improvements but no general improvement in initial mean--variance value, constrained performance or learned financial performance. Existing mean--variance policy iteration reproduces the zero-interest calibration, so this formula is not claimed as a new algorithm. Novelty of the quantitative results remains subject to further prior-art verification.
 
-We place these results inside an exact decomposition of the shortfall of a
-trained agent against the pre-committed optimum into three terms---the price of
-time-consistency, the surrogate gap, and the learning error---and measure all
-three. Which term dominates depends on the risk aversion, with a crossover in our
-market near $\varphi=12$. Finally, we exhibit configurations in which the Sharpe
-ratio ranks two policies in the opposite order to the mean-variance objective,
-so that backtest comparison cannot detect the effect of reward design.
 \end{abstract}
 
 \begin{center}
-\fbox{\begin{minipage}{0.92\textwidth}
-\small
-\textbf{Status.} This is a working draft. Three things are outstanding before
-submission and are stated plainly in Section~\ref{sec:limits}: a systematic
-priority search for Theorem~\ref{thm:main}, which the author has not completed;
-a fully rigorous treatment of the error terms in Theorem~\ref{thm:t2}, currently
-established by series expansion with numerical confirmation; and the general-horizon
-constant, which is open. All numerical results are reproducible from the
-accompanying code.
+\fbox{\begin{minipage}{0.92\textwidth}\small
+\textbf{Status.} Working draft. The scoped proofs are established; publication priority,
+unrestricted DSR, constraints and costs, and full algorithm replications remain open.
+Evidence labels distinguish proved, numerically verified and preliminary results.
 \end{minipage}}
 \end{center}
 
-%======================================================================
-\section{Introduction}
+\section{Introduction and scope}
 
-Reinforcement learning is now routinely applied to multi-period asset allocation.
-The surveys of \citet{bai} and \citet{hambly} between them cover several dozen
-papers in this area, and across both a consistent construction appears.
-The practitioner wants a policy trading return against risk, encodes risk into a
-per-period reward---portfolio return, a Sharpe ratio, a differential Sharpe ratio,
-a variance penalty---and maximises the sum of those rewards with a standard
-solver.
+\subsection{Scope and reproducibility}
+This draft replaces the earlier unqualified surrogate-gap narrative. The paper and proposal share saved experiment data, exact assumptions, figure captions and a version-specific literature ledger. Proofs below establish mathematical claims within the model; they do not certify publication priority. The raw experiment bundle contains all seeds, exact benchmark values and training histories.
 
-The objective so constructed is not the mean-variance criterion. It is a sum,
-therefore time-consistent, therefore amenable to dynamic programming; the
-mean-variance criterion is none of these. That the two formulations differ is
-not new. \citet{garleanu} and \citet{demiguel} optimise a discounted sum of
-period-by-period mean-variance tradeoffs, while \citet{ling} extend Markowitz to
-the mean and variance of terminal wealth; the distinction is standard in that
-literature. What appears not to have been done is to quantify the map between
-them, and in particular to say what a practitioner choosing a per-period risk
-penalty is implicitly choosing.
-
-That is the question here. Section~\ref{sec:recursion} derives the maximiser of
-the additive objective for the variance-penalised reward. Section~\ref{sec:main}
-proves that at a unit gross riskless return the additive surrogate reproduces the
-equilibrium mean-variance policy exactly, at $\kappa^{\star}=\varphi(1-\nu)$
-where $\nu=m^{\top}M^{-1}m$; that a one-period horizon always admits an exact
-match; and that at two periods with $s\neq1$ the minimal attainable distance is
-linear in $s-1$ with a closed-form constant. Section~\ref{sec:numerics} places
-these inside an exact three-term decomposition of the shortfall of a trained
-agent and measures all three terms.
-
-The practical content is short enough to state here. A practitioner who sets the
-reward's risk penalty equal to their risk aversion is making an error whose size
-is computable: the correct value is $\varphi(1-\nu)$, which in our demonstration
-market is $0.806$ rather than $1$. And the error is invisible to the evaluation
-the field uses, because we exhibit policies that the Sharpe ratio ranks in the
-opposite order to the objective.
-
-%======================================================================
-\section{Related work}\label{sec:related}
-
-\paragraph{Multiperiod mean-variance.} \citet{ling} solve the terminal-wealth
-problem by embedding it in an auxiliary linear-quadratic problem, giving a
-pre-committed policy affine in wealth; \citet{zhouli} give the continuous-time
-counterpart. A parallel strand studies time-consistent policies:
-\citet{strotz} identifies the phenomenon, \citet{basak} characterise the
-equilibrium mean-variance policy, \citet{bjork} give the general Markovian
-theory in discrete time, and \citet{bjorkzhou} extend it to state-dependent risk
-aversion, noting that the constant-risk-aversion equilibrium invests a dollar
-amount independent of wealth---the property our Theorem~\ref{thm:main} proof
-establishes in discrete time as $A_t^2=B_t$. Our Section~\ref{sec:main} works entirely inside this
-framework and adds nothing to it; the two policies are inputs to our comparison,
-not outputs.
-
-\paragraph{Summed per-period objectives.} A separate line optimises a discounted
-sum of single-period mean-variance tradeoffs rather than a terminal criterion.
-\citet{garleanu} do this with quadratic transaction costs, obtaining the
-aim-portfolio characterisation; \citet{demiguel} work in a related setting. That
-this formulation differs from \citet{ling} is understood in that literature and
-we claim no novelty for the observation. Our contribution is the quantitative
-map: Theorem~\ref{thm:main} says which per-period penalty corresponds to which
-terminal risk aversion, and Theorem~\ref{thm:t2} bounds the residual when no
-exact correspondence exists.
-
-\paragraph{Reinforcement learning in finance.} \citet{bai} survey the applied
-literature and classify the rewards in use, of which volatility-adjusted return
-is a principal category. \citet{hambly} cover the same ground from the
-mathematical side and note that the mean-variance framework is time-inconsistent
-so that the Bellman equation fails, and separately that convergence guarantees
-for the deterministic policy gradient family were unavailable at the time of
-writing; \citet{xiong} have since established convergence of DPG to a stationary
-policy. \citet{wang} treat exploration for the continuous-time mean-variance
-problem correctly, via entropy regularisation, obtaining a Gaussian optimal
-exploratory policy. None of this work asks what the discrete-time additive
-surrogate optimises, which is our question.
-
-\paragraph{Reward design.} The general problem of an optimised proxy diverging
-from the intended objective is familiar in reinforcement learning, usually under
-the heading of reward misspecification or reward hacking. The instance studied
-here is unusually tractable: both the intended objective and the surrogate admit
-closed-form solutions, so the discrepancy can be computed rather than estimated,
-and the mechanism---failure of the tower property for the variance---is
-identifiable rather than emergent.
-
-%======================================================================
-\section{Setting}\label{sec:setting}
-
-Let there be $n$ risky assets and a horizon $T$. Following \citet{hambly}, itself
-following \citet{ling}, write $s$ for the gross riskless return per period and
-$P_t\in\R^{n}$ for the excess gross returns, independent across $t$ with
-\begin{equation}
-m=\E[P_t],\qquad M=\E[P_tP_t^{\top}]=\Sigma+mm^{\top},\qquad
-\nu=m^{\top}M^{-1}m .
-\end{equation}
-We assume $M\succ0$, which gives $\nu\in[0,1)$. Write $d=M^{-1}m$ for the
-direction that will appear throughout. With $u_t\in\R^{n}$ the vector of amounts
-held in the risky assets and $x_t$ wealth,
-\begin{equation}
-x_{t+1}=s\,x_t+P_t^{\top}u_t ,\qquad d_t:=x_{t+1}-x_t=(s-1)x_t+P_t^{\top}u_t .
-\label{eq:dynamics}
-\end{equation}
-The mean-variance criterion evaluated from time $t$ at wealth $x$ is
-\begin{equation}
-J(t,x,u)=\E_{t,x}[x_T]-\varphi\Var_{t,x}(x_T),\qquad \varphi>0,
-\label{eq:mv}
-\end{equation}
-and we write $J(\pi)=J(0,x_0,\pi)$.
-
-\subsection{Three notions of optimality}
-
-Because \eqref{eq:mv} contains the square of a conditional expectation, it does
-not satisfy the tower property and the Bellman equation fails
-\citep{strotz,bjork}. Three inequivalent objects result.
-
-The \emph{pre-committed} policy maximises \eqref{eq:mv} at time $0$ and is
-executed without revision. \citet{ling} obtain it by embedding in an auxiliary
-linear-quadratic problem; it is affine in wealth, $u^{\star}_t(x)=\alpha_tx+\beta_t$.
-
-The \emph{equilibrium} policy $\pieq$ is the consistent-planning solution: for all
-$t,x$ and admissible $a$,
-\begin{equation}
-J(t,x,\pieq)\;\ge\;J\bigl(t,x,(a,\pieq_{t+1:T})\bigr).
-\label{eq:equilibrium}
-\end{equation}
-\citet{basak} characterise it and show it differs from the pre-committed policy.
-
-The \emph{myopic} policy applies the single-period optimiser repeatedly.
-
-\subsection{The additive surrogate}
-
-Fix a per-period reward $r_t$ and let
-\begin{equation}
-J_r(\pi)=\E\Bigl[\textstyle\sum_{t}r_t\Bigr],\qquad
-\pir=\arg\max_{\pi}J_r(\pi).
-\end{equation}
-We study the variance-penalised family
-\begin{equation}
-r_t=d_t-\kappa\,d_t^{2},\qquad \kappa>0 ,
-\label{eq:reward}
-\end{equation}
-which is the additive stand-in for \eqref{eq:mv} that practitioners write down.
-
-\begin{remark}[the plain-return reward]
-With $\kappa=0$ the reward telescopes to $x_T-x_0$ and $J_r$ rewards unbounded
-leverage, so no maximiser exists. The mean-variance problem it stands in for is
-bounded and solvable. This is elementary but worth stating, because
-\citet{bai} report plain portfolio return as the most common reward in the
-surveyed literature. An algorithm run on it does not solve a poorly conditioned
-version of \eqref{eq:mv}; it solves a problem with no solution, and what it
-returns is determined by leverage limits and stopping rules.
-\end{remark}
-
-%======================================================================
-\section{The surrogate optimum}\label{sec:recursion}
-
-\begin{proposition}[Backward recursion]\label{prop:recursion}
-For the reward \eqref{eq:reward}, the maximiser of $J_r$ over affine policies is
-$\pir_t(x)=\alpha_tx+\beta_t$ with
-\begin{align}
-\alpha_t&=-\,d\;\frac{g_t}{\kappa-p_{t+1}}, &
-\beta_t&=\;\;d\;\frac{1+q_{t+1}}{2(\kappa-p_{t+1})},
-\label{eq:policy}\\[0.3em]
-p_t&=\frac{\kappa p_{t+1}-(1-\nu)g_t^{2}}{\kappa-p_{t+1}}, &
-1+q_t&=(1+q_{t+1})\Bigl(s-\frac{\nu g_t}{\kappa-p_{t+1}}\Bigr),
-\label{eq:coeffs}
-\end{align}
-where $g_t=\kappa(s-1)-p_{t+1}s$, started from $p_T=q_T=0$. The one-step problem
-is concave at every step, so the recursion is well defined for every
-$\kappa>0$.
-\end{proposition}
-
-\begin{lemma}[Automatic concavity]\label{lem:concave}
-For every $\kappa>0$ and every $t$, $p_t\le0$, hence $\kappa-p_{t+1}\ge\kappa>0$.
-\end{lemma}
-
-\begin{proof}
-Backward induction. $p_T=0$. If $p_{t+1}\le0$ then the numerator of $p_t$ in
-\eqref{eq:coeffs} is $\kappa p_{t+1}-(1-\nu)g_t^{2}\le0$, since $\kappa>0$ and
-$\nu<1$, while the denominator is $\kappa-p_{t+1}\ge\kappa>0$. Hence $p_t\le0$.
-\end{proof}
-
-\begin{proof}
-$J_r$ is a sum of per-period terms, so the dynamic programming principle applies.
-Let $W_t(x)=p_tx^2+q_tx+c_t$ with $W_T\equiv0$. Using \eqref{eq:dynamics} and
-independence of $P_t$ from $x_t$,
-\[
-\E\bigl[r_t+W_{t+1}(x_{t+1})\bigr]
-=(s-1)x+m^{\top}u-\kappa\bigl[(s-1)^2x^2+2(s-1)x\,m^{\top}u+u^{\top}Mu\bigr]
-\]
-\[
-\qquad+\;p_{t+1}\bigl[s^2x^2+2sx\,m^{\top}u+u^{\top}Mu\bigr]
-+q_{t+1}\bigl[sx+m^{\top}u\bigr]+c_{t+1}.
-\]
-The gradient in $u$ is
-$m(1+q_{t+1})-2\kappa(s-1)x\,m+2p_{t+1}sx\,m+2(p_{t+1}-\kappa)Mu$, and the
-Hessian is $2(p_{t+1}-\kappa)M$, negative definite exactly when
-$\kappa>p_{t+1}$, which Lemma~\ref{lem:concave} supplies. Setting the gradient
-to zero and solving gives
-\eqref{eq:policy}. Substituting back and collecting powers of $x$ gives
-\eqref{eq:coeffs}.
-\end{proof}
-
-\begin{remark}[multi-asset reduces to scalar]\label{rem:scalar}
-Every asset-dependent quantity enters \eqref{eq:policy}--\eqref{eq:coeffs} only
-through the scalar $\nu$ and the fixed direction $d$: with $u=dz$ one has
-$m^{\top}u=\nu z$ and $u^{\top}Mu=\nu z^{2}$. The $n$-asset problem is therefore
-the one-asset problem with $\nu=m^{\top}M^{-1}m$. All results below are stated
-for general $n$ at no extra cost.
-\end{remark}
-
-%======================================================================
-\section{Main results}\label{sec:main}
-
-\begin{theorem}[Exact recovery at a unit riskless return]\label{thm:main}
-Let $s=1$. Then $p_t=q_t=0$ and $\alpha_t=0$ for all $t$, and
-\[
-\pir=\pieq
-\qquad\Longleftrightarrow\qquad
-\kappa=\kappa^{\star}:=\varphi\,(1-\nu).
-\]
-The identity holds for every horizon $T\ge1$ and every $n\ge1$.
-\end{theorem}
-
-\begin{proof}
-\emph{Surrogate side.} With $s=1$, $g_t=-p_{t+1}$. We show $p_t=0$ by backward
-induction. $p_T=0$. If $p_{t+1}=0$ then $g_t=0$, so by \eqref{eq:coeffs}
-$p_t=(0-0)/\kappa=0$ and by \eqref{eq:policy} $\alpha_t=0$. Then
-$1+q_t=(1+q_{t+1})(1-0)=1+q_{t+1}$, so $q_t=q_T=0$, and
-$\beta_t=d/(2\kappa)$ for every $t$.
-
-\emph{Equilibrium side.} Write the moment functions generated by the equilibrium
-continuation as $f(t,x)=\E_{t,x}[x_T]=A_tx+a_t$ and
-$g(t,x)=\E_{t,x}[x_T^2]=B_tx^2+b_tx+c_t$. The one-step equilibrium condition
-\eqref{eq:equilibrium} gives, by the same computation as
-Proposition~\ref{prop:recursion} applied to $f-\varphi(g-f^2)$,
-\begin{equation}
-\alpha^{\mathrm{eq}}_t=s\,(A_{t+1}^2-B_{t+1})\,D_{t+1}^{-1}m,\qquad
-\beta^{\mathrm{eq}}_t=\frac{A_{t+1}-\varphi b_{t+1}+2\varphi A_{t+1}a_{t+1}}{2\varphi}
-D_{t+1}^{-1}m,
-\label{eq:eqpolicy}
-\end{equation}
-with $D_{t+1}=B_{t+1}M-A_{t+1}^2mm^{\top}$ and $A_T=B_T=1$, $a_T=b_T=0$.
-We claim $A_t^2=B_t$ for all $t$, hence $\alpha^{\mathrm{eq}}_t=0$. At $t=T$ this
-holds. If $A_{t+1}^2=B_{t+1}$ then $\alpha^{\mathrm{eq}}_t=0$, and propagating the
-moment functions under a policy with zero wealth-slope gives $A_t=sA_{t+1}$ and
-$B_t=s^2B_{t+1}$, so $A_t^2=s^2A_{t+1}^2=s^2B_{t+1}=B_t$.
-
-With $s=1$ this yields $A_t=B_t=1$. Then
-$D_{t+1}=M-mm^{\top}$, and by the Sherman--Morrison identity
-\[
-(M-mm^{\top})^{-1}m=\frac{M^{-1}m}{1-m^{\top}M^{-1}m}=\frac{d}{1-\nu}.
-\]
-Propagating the moment functions under $\alpha^{\mathrm{eq}}=0$ gives
-$a_t=m^{\top}\beta^{\mathrm{eq}}_t+a_{t+1}$ and
-$b_t=2m^{\top}\beta^{\mathrm{eq}}_t+b_{t+1}$, so $b_t=2a_t$ for all $t$ since both
-start at zero. The numerator of $\beta^{\mathrm{eq}}_t$ in \eqref{eq:eqpolicy} is
-therefore $1-2\varphi a_{t+1}+2\varphi a_{t+1}=1$, giving
-\[
-\beta^{\mathrm{eq}}_t=\frac{d}{2\varphi(1-\nu)} .
-\]
-
-\emph{Matching.} Both policies have zero wealth-slope and constant offset, so
-they coincide if and only if $d/(2\kappa)=d/(2\varphi(1-\nu))$, that is
-$\kappa=\varphi(1-\nu)$.
-\end{proof}
-
-\begin{corollary}[The natural choice is wrong]
-Setting the reward's risk penalty equal to the risk aversion, $\kappa=\varphi$,
-does not recover the equilibrium policy unless $\nu=0$, that is unless the risky
-assets carry no excess return. The relative error in the penalty is $\nu$.
-\end{corollary}
-
-\subsection{The correction is a discrete-time effect}\label{sec:ct}
-
-The factor $1-\nu$ separating $\kappa^{\star}$ from $\varphi$ deserves comment,
-because it explains both why the result is useful and why it is not visible in
-the literature it borders on.
-
-Let the rebalancing interval be $\Delta$. Then $m=\mathcal{O}(\Delta)$ while
-$M=\Sigma\Delta+\mathcal{O}(\Delta^{2})$, so
-\begin{equation}
-\nu=m^{\top}M^{-1}m=\bigl(\mu^{\top}\Sigma^{-1}\mu\bigr)\,\Delta+\mathcal{O}(\Delta^{2})
-=\mathrm{SR}^{2}\Delta+\mathcal{O}(\Delta^{2}),
-\label{eq:nuscaling}
-\end{equation}
-with $\mathrm{SR}$ the annualised Sharpe ratio of the tangency portfolio. The
-correction therefore vanishes in the continuous-time limit, and
-$\kappa^{\star}\to\varphi$.
-
-Two consequences. First, the equilibrium mean-variance literature works in
-continuous time---\citet{basak}, \citet{bjorkzhou}, \citet{wang}---where this
-factor is identically zero, so its absence there is expected rather than
-surprising. Second, reinforcement learning does not operate in that limit: it
-operates at whatever rebalancing frequency the environment is discretised to.
-Table~\ref{tab:freq} gives the size of the effect.
-
-\begin{table}[h]\centering\small
-\begin{tabular}{lrrr}
+\begingroup\small
+\setlength{\LTpre}{8pt}\setlength{\LTpost}{8pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{longtable}{@{}L{\dimexpr 0.300\linewidth-0.600\tabcolsep\relax}L{\dimexpr 0.700\linewidth-1.400\tabcolsep\relax}@{}}
 \toprule
-rebalancing & $\Delta$ (years) & $\nu$ & $\kappa^{\star}/\varphi$\\
-\midrule
-annual & $1$ & $0.1000$ & $0.900$\\
-quarterly & $0.25$ & $0.0270$ & $0.973$\\
-monthly & $1/12$ & $0.0092$ & $0.991$\\
-weekly & $1/52$ & $0.0021$ & $0.998$\\
-daily & $1/252$ & $0.0004$ & $1.000$\\
-\bottomrule
-\end{tabular}
-\caption{Size of the correction against rebalancing frequency, for
-$\mu=0.06$, $\sigma=0.18$. It is an eleven per cent effect at annual
-rebalancing and negligible below weekly.}
-\label{tab:freq}
-\end{table}
-
-\noindent
-So the result matters for coarse rebalancing and not for fine, and
-\eqref{eq:nuscaling} says precisely where the boundary lies. A practitioner
-rebalancing daily may set $\kappa=\varphi$ with a clear conscience; one
-rebalancing annually should not.
-
-\begin{proposition}[One period is always matchable]\label{prop:t1}
-Let $T=1$ and let $s>0$ be arbitrary. Then there exists $\kappa>0$ with
-$\pir=\pieq$, provided $(s-1)x_0+\bigl(2\varphi(1-\nu)\bigr)^{-1}>0$.
-\end{proposition}
-
-\begin{proof}
-With $T=1$, $p_1=q_1=0$ and $g_0=\kappa(s-1)$, so by \eqref{eq:policy}
-$\alpha_0=-d(s-1)$ and $\beta_0=d/(2\kappa)$. On the equilibrium side
-$A_1=B_1=1$ gives $\alpha^{\mathrm{eq}}_0=0$ and
-$\beta^{\mathrm{eq}}_0=d/(2\varphi(1-\nu))$. Wealth at time $0$ is the constant
-$x_0$, so the two controls agree iff
-\[
--(s-1)x_0+\frac{1}{2\kappa}=\frac{1}{2\varphi(1-\nu)},
-\]
-which is solved by $\kappa^{-1}=2(s-1)x_0+\bigl(\varphi(1-\nu)\bigr)^{-1}$.
-\end{proof}
-
-\begin{remark}
-Proposition~\ref{prop:t1} isolates the mechanism. At one period the mismatch in
-the wealth-slope multiplies a deterministic quantity and is absorbed into the
-offset, which the single free parameter $\kappa$ can then correct. With $T\ge2$
-the slope multiplies a random wealth whose distribution differs across periods,
-and one scalar cannot correct $T$ separate mismatches. The surrogate gap is a
-multi-period phenomenon.
-\end{remark}
-
-\begin{theorem}[Two periods: linear irreducible gap]\label{thm:t2}
-Let $T=2$ and $s=1+\epsilon$. Measure the distance between policies by
-\begin{equation}
-\|\pi-\pi'\|^{2}=\sum_{t=0}^{T-1}\E\bigl\|\pi_t(x_t)-\pi'_t(x_t)\bigr\|^{2},
-\label{eq:distance}
-\end{equation}
-the expectation taken under $\pi$. Then
-\[
-\min_{\kappa>0}\bigl\|\pir-\pieq\bigr\|
-\;=\;c\,|\epsilon|+O(\epsilon^{2}),
-\qquad
-c=\|d\|\,\frac{\sqrt{(2-\nu)(1+\nu)}}{2\varphi(1-\nu)} .
-\]
-\end{theorem}
-
-\begin{proof}[Proof sketch]
-By Proposition~\ref{prop:recursion}, $g_1=\kappa\epsilon$ and
-$p_1=-(1-\nu)\kappa\epsilon^{2}=O(\epsilon^{2})$, whence
-$g_0=\kappa\epsilon+O(\epsilon^{2})$ and
-\[
-\alpha_0=\alpha_1=-d\,\epsilon+O(\epsilon^{2}),
-\]
-independent of $\kappa$ at leading order: the wealth-slope mismatch cannot be
-tuned away. Expanding $\beta_t$ and, on the equilibrium side,
-$A_t=s^{T-t}$, $B_t=s^{2(T-t)}$, $b_t=2sa_t$, gives
-$\beta^{\mathrm{eq}}_1=d/(2\varphi(1-\nu))$ and
-$\beta^{\mathrm{eq}}_0=d/(2\varphi s(1-\nu))$. Substituting into
-\eqref{eq:distance}, writing $\kappa=\kappa^{\star}(1+w\epsilon)$ and retaining
-terms of order $\epsilon^{2}$ yields a quadratic in $w$; minimising over $w$ and
-taking the square root gives the stated $c$.
-\end{proof}
-
-\begin{conjecture}[General horizon]\label{conj}
-For every $T\ge2$ there is $c_T>0$, depending on $\nu,\varphi,T$ and $\|d\|$,
-with $\min_{\kappa}\|\pir-\pieq\|=c_T|s-1|+O((s-1)^2)$.
-\end{conjecture}
-
-Section~\ref{sec:numerics} reports fitted exponents of $1.0000$ across every
-configuration tested. The dependence of $c_T$ on the horizon is superlinear: a
-log--log fit over $T\in\{2,\dots,10\}$ gives an exponent of $1.16$ with visible
-curvature and a maximum log residual of $0.08$, so $c_T$ is not a power law in
-$T$. We have not obtained it in closed form for $T\ge3$.
-
-Collecting the above, the functional posited in the introduction is
-\begin{equation}
-\Lambda(\kappa)=\bigl|\kappa-\varphi(1-\nu)\bigr|+c_T\,|s-1| ,
-\label{eq:lambda}
-\end{equation}
-vanishing exactly when $\pir=\pieq$, with the distance bounded linearly in
-$\Lambda$. The first term is reward mis-specification, which the practitioner
-controls; the second is structural.
-
-%======================================================================
-\section{Numerical results}\label{sec:numerics}
-
-\subsection{A decomposition}
-
-Let $\pihat$ be the output of a learning algorithm applied to $J_r$. Since $J$ is
-a scalar functional of a policy,
-\begin{equation}
-J(\pipre)-J(\pihat)
-=\underbrace{J(\pipre)-J(\pieq)}_{\epsincons}
-+\underbrace{J(\pieq)-J(\pir)}_{\epssurr}
-+\underbrace{J(\pir)-J(\pihat)}_{\epslearn},
-\label{eq:decomp}
-\end{equation}
-a telescoping identity requiring only that each policy be admissible. The first
-term is the price of time-consistency, characterised by \citet{basak}; the third
-is optimisation and estimation error, the object of convergence results such as
-\citet{xiong}. The middle term is the subject of Section~\ref{sec:main}.
-
-We measure all three on a market of three assets over four periods with
-$\mu=(0.06,0.04,0.02)$, volatilities $(0.18,0.12,0.08)$, correlations
-$\rho_{12}=0.30$, $\rho_{13}=-0.10$, $\rho_{23}=0.05$, and $s=1.02$, giving
-$\nu=0.1943$.
-
-The agent is an affine-Gaussian policy,
-$\pi(u\mid x)=\mathcal{N}(\alpha_tx+\beta_t,\sigma_t^2I)$, trained by REINFORCE
-with a per-period baseline and Adam. Its policy class contains $\pir$ by
-construction; this is deliberate, since otherwise $\epslearn$ would confound
-optimisation error with approximation error and the decomposition would not mean
-what \eqref{eq:decomp} says. The agent is trained on $J_r$ alone and never
-observes $J$.
-
-Hyperparameters: $6000$ iterations, batch $512$, learning rate $0.03$ annealed as
-$\sigma^{1/2}$, exploration $\sigma$ decayed geometrically from $0.5$ to $0.03$,
-five seeds. One implementation note is worth recording because it is a property
-of the estimator rather than of the objective: the score for a Gaussian mean
-carries a factor $\sigma^{-2}$, and retaining it makes the gradient variance
-diverge as $\sigma$ anneals, so that training peaks early and then degrades. We
-absorb it into the learning rate, which is the Fisher preconditioning for this
-policy class.
-
-\begin{table}[h]\centering\small
-\begin{tabular}{lrl}
+\textbf{Evaluation object} & \textbf{Meaning}\\
+\midrule\endfirsthead
 \toprule
-$J(\pipre)$ & $1.425799294$ & pre-committed optimum, closed form\\
-$J(\pieq)$ & $1.323643886$ & equilibrium, backward recursion\\
-$J(\pir)$ & $1.316579788$ & surrogate optimum, exact\\
-$J(\pihat)$ & $1.307875869$ & trained agent, mean of 5 seeds (s.d.\ $0.0032$)\\
-\midrule
-$\epsincons$ & $+0.102155409$ & \\
-$\epssurr$ & $+0.007064097$ & \\
-$\epslearn$ & $+0.008703920$ & \\
-\midrule
-sum & $+0.117923426$ & identity closes to $0.0\mathrm{e}{+}00$\\
-\bottomrule
-\end{tabular}
-\caption{The decomposition \eqref{eq:decomp} at $\varphi=\kappa=1$.}
-\end{table}
+\textbf{Evaluation object} & \textbf{Meaning}\\
+\midrule\endhead
+\bottomrule\endfoot
+Precommitted policy & Initial-date maximiser of J.\\[3pt]
+Equilibrium policy & No profitable one-step deviation by any later self.\\[3pt]
+Reward optimum & Exact optimiser of the chosen additive criterion.\\[3pt]
+Learned policy & Finite-budget output, evaluated as a deterministic affine policy.\\[3pt]
+\end{longtable}
+\endgroup
 
-\subsection{Which term dominates}
-
-$\epsincons$ is exactly proportional to $\varphi^{-1}$ and independent of $x_0$
-(verified to $9\mathrm{e}{-}13$ and $5\mathrm{e}{-}15$). $\epssurr$ is not, and
-grows. The two therefore cross.
-
-\begin{table}[h]\centering\small
-\begin{tabular}{rrrrl}
-\toprule
-$\varphi$ & $\epsincons$ & $\epssurr$ & $\epslearn$ & dominant\\
-\midrule
-$0.5$ & $0.204311$ & $0.010937$ & $0.047494$ & incons\\
-$1$ & $0.102155$ & $0.007064$ & $0.008635$ & incons\\
-$4$ & $0.025539$ & $0.004919$ & $0.000573$ & incons\\
-$8$ & $0.012769$ & $0.005575$ & $-0.000129$ & incons\\
-$16$ & $0.006385$ & $0.007639$ & $0.000053$ & \textbf{surr}\\
-$32$ & $0.003192$ & $0.012145$ & $-0.000346$ & \textbf{surr}\\
-$64$ & $0.001596$ & $0.021345$ & $-0.000901$ & \textbf{surr}\\
-\bottomrule
-\end{tabular}
-\caption{The ranking of the error sources changes near $\varphi=12$.}
-\label{tab:cross}
-\end{table}
-
-So ``is reward design the dominant error?'' has no configuration-free answer, and
-two studies disagreeing about it may be on opposite sides of this crossover. In
-40 randomly drawn markets a crossover was located in every case for which the
-bracketing succeeded, at values of $\varphi$ between $4$ and $10$; its existence
-appears general and its location market-specific.
-
-The learning term is small throughout and occasionally negative. This is
-structural rather than seed noise: $\epslearn$ is measured in $J$, whereas the
-agent optimises $J_r$. A policy that is a worse maximiser of $J_r$ than $\pir$
-can sit closer to the $J$-optimum, and we verify directly that such perturbations
-of $\pir$ exist at every $\varphi$ tested.
-Figure~\ref{fig:crossover} shows the two curves; the $\varphi^{-1}$ decay of
-$\epsincons$ and the growth of $|\epssurr|$ are both visible.
-
-\begin{figure}[h]\centering
-\includegraphics[width=0.62\textwidth]{fig_crossover.pdf}
-\caption{The price of time-consistency decays as $\varphi^{-1}$ while the
-surrogate gap grows, so the dominant error source depends on the risk aversion.
-Three assets, four periods, $s=1.02$, with the practitioner's choice
-$\kappa=\varphi$; the values are those of Table~\ref{tab:cross}.}
-\label{fig:crossover}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/01_policy_alignment.pdf}
+\caption{NUMERICALLY VERIFIED. $T=4$, $\varphi=1$, $s=1.02$, three risky assets. Reward redesign eliminates exact policy mismatch. Scalar calibration attains a slightly larger initial J than equilibrium: better alignment and larger initial J are different goals.}
+\label{fig:01_policy_alignment}
 \end{figure}
 
-\subsection{Verification of the main results}
+\section{What the closest literature actually does}
 
-Theorem~\ref{thm:main} is confirmed to $10^{-16}$ in policy distance across
-horizons $T\in\{2,4,6\}$, asset counts $n\in\{1,3\}$ and $\varphi\in\{1,3\}$.
-Proposition~\ref{prop:t1} is confirmed to $7\mathrm{e}{-}10$. For
-Theorem~\ref{thm:t2} the closed-form $c$ agrees with the fitted constant to
-$0.11\%$ worst case over six markets, with fitted exponent $1.0000$ throughout.
-Proposition~\ref{prop:recursion} is checked against an independent numerical
-maximiser to $5\mathrm{e}{-}14$ on ten random markets.
+The gap is not that financial RL ignores objectives or time inconsistency. Several important papers address them directly. The relevant question is how a specified reward's optimal policy differs from an independently specified terminal-wealth target.
 
-As an external check on the equilibrium recursion, which is derived here rather
-than quoted, we verify that it reproduces the continuous-time formula of
-\citet{basak}, $\hat u(t,x)=\gamma^{-1}\sigma^{-2}(\alpha-r)e^{-r(T-t)}$ with
-$\gamma=2\varphi$, in the limit of fine rebalancing. Discretising one year into
-$n$ steps gives relative differences of $0.76\%$, $0.25\%$, $0.06\%$, $0.01\%$
-and $0.00\%$ for $n=4,12,52,252,2520$. Convergence at the rate implied by
-\eqref{eq:nuscaling} is itself a check on that scaling.
-Figure~\ref{fig:scaling} plots the measured minimal distance against the
-closed-form prediction of Theorem~\ref{thm:t2}.
-
-\begin{figure}[h]\centering
-\includegraphics[width=0.62\textwidth]{fig_scaling.pdf}
-\caption{Minimal attainable policy distance against $s-1$ for three markets at
-$T=2$. Markers are measured; lines are $c\,|s-1|$ with $c$ from
-Theorem~\ref{thm:t2}, not fitted.}
-\label{fig:scaling}
-\end{figure}
-
-Figure~\ref{fig:policies} shows why the policies differ in kind rather than
-degree. The pre-committed control has a negative wealth slope, the equilibrium
-control none at all, and the surrogate control an intermediate slope set by
-$s-1$.
-
-\begin{figure}[h]\centering
-\includegraphics[width=0.62\textwidth]{fig_policies.pdf}
-\caption{First-period holding in asset one as a function of initial wealth. The
-equilibrium control is flat (Theorem~\ref{thm:main} proof, $A_t^2=B_t$); the
-pre-committed control decreases in wealth; the surrogate lies between.}
-\label{fig:policies}
-\end{figure}
-
-\subsection{The Sharpe ratio misranks}
-
-\begin{table}[h]\centering\small
-\begin{tabular}{lrr}
+\begingroup\small
+\setlength{\LTpre}{8pt}\setlength{\LTpost}{8pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{longtable}{@{}L{\dimexpr 0.300\linewidth-1.200\tabcolsep\relax}L{\dimexpr 0.350\linewidth-1.400\tabcolsep\relax}L{\dimexpr 0.350\linewidth-1.400\tabcolsep\relax}@{}}
 \toprule
-policy & Sharpe & $J$\\
-\midrule
-pre-committed & $1.3126$ & $1.425799$\\
-equilibrium & $1.1501$ & $1.323644$\\
-surrogate, $\kappa^{\star}$ & $1.1542$ & $1.326118$\\
-surrogate, $\kappa=\varphi$ & $\mathbf{1.1955}$ & $\mathbf{1.316580}$\\
-\bottomrule
-\end{tabular}
-\caption{The $\kappa=\varphi$ surrogate has the higher Sharpe ratio and the lower
-objective.}
-\label{tab:sharpe}
-\end{table}
+\textbf{Paper / exact locator} & \textbf{Objective and method} & \textbf{Role in this project}\\
+\midrule\endfirsthead
+\toprule
+\textbf{Paper / exact locator} & \textbf{Objective and method} & \textbf{Role in this project}\\
+\midrule\endhead
+\bottomrule\endfoot
+Kolm--Ritter (2019), manuscript Eqs. 8--10 & Approximate quadratic increment reward; fitted SARSA hedging. & Closest reward family; explicitly acknowledges covariance/approximation.\\[3pt]
+Jiang et al. (2017), \S{}4.2 Eqs. 21--22 & Log-growth reward; direct gradient portfolio learning. & Alternative preference; not intrinsically a wrong growth reward.\\[3pt]
+Yang et al. (2020), \S{}3.3 Eq. 4; Table 2 & Net value change; PPO/A2C/DDPG; Sharpe ensemble selection. & Return-reward adaptation; separates reward from evaluation criterion.\\[3pt]
+Moody--Saffell (2001), \S{}II-D Eqs. 14--15 & Differential Sharpe; recurrent direct reinforcement. & Augmented-state DSR comparison, not fixed-penalty equivalence.\\[3pt]
+Bisi et al. (2020), \S{}\S{}3--5; Zhang et al. (2021), Algorithm 1 & Per-step mean-volatility; TRVO / MVPI-TD3. & Direct prior reward-transformation theory; MVPI adaptation added.\\[3pt]
+Wang--Zhou (2020), \S{}2 Eq. 11; Dai et al. (2023), working \S{}4 & Objective-specific MV RL; precommitment / log-MV equilibrium. & Positive precedents with analytic references; no first-MV-RL claim.\\[3pt]
+\end{longtable}
+\endgroup
 
-The two orderings disagree. A comparison by reported Sharpe ratio---the standard
-practice described in both surveys---concludes that the surrogate policy is
-better on precisely the criterion on which it is worse.
+Concrete positioning: Kolm--Ritter optimise an explicitly approximate quadratic increment reward for hedging. Jiang et al. choose log growth. Yang et al. train on value increments and select agents by Sharpe. Our benchmark holds the market and feasible set fixed, solves these adapted reward problems, and compares their induced policies with a prescribed mean--variance equilibrium. This tests preference alignment; it does not refute each paper's own stated objective. \citep{ref1,ref2,ref3}
 
-This is not a constructed example. Over $519$ randomly drawn (market, $\varphi$)
-pairs, the Sharpe ratio and the mean-variance objective ranked $\pieq$ against
-$\pir$ in opposite orders in $93.1\%$ of cases. The two are different functionals
-of the terminal distribution and there is no reason for them to agree; the
-surprise is only that the field's evaluation practice presumes they do.
-Reward-design error cannot be detected by a Sharpe comparison and must be
-measured against a known optimum.
+The zero-interest calibration is not a sufficient novelty claim: the finite-horizon iid reduction of Zhang's MVPI has the same fixed point. Basak--Chabakauri also discuss recovering time-consistent objectives with the same policy, and Björk--Murgoci's abstract states an associated-control result. The candidate contribution is the explicit quantitative obstruction and its audited removal within a concrete reward family. Priority remains OPEN. \citep{ref6,ref10,ref12}
 
-\subsection{What follows for practice}
+The source ledger records authors, exact titles, venue, identifiers, reward, algorithm, data, reported results, and version-specific locators for every comparison. Eleven primary versions were inspected; one additional source is explicitly abstract-only.
 
-Three recommendations follow from the results above, in decreasing order of
-confidence.
 
-First, if a variance-penalised reward is used with the intention of representing
-a terminal mean-variance criterion with risk aversion $\varphi$, the penalty
-should be set to $\varphi(1-\nu)$ rather than $\varphi$, with
-$\nu=m^{\top}M^{-1}m$ estimated from the same data used to train. By
-\eqref{eq:nuscaling} this matters when the rebalancing interval is coarse
-relative to $\mathrm{SR}^{-2}$ and not otherwise: it is an eleven per cent
-correction at annual rebalancing and under a quarter of one per cent at weekly.
-Since $\nu$ is a byproduct of estimating the moments the agent needs anyway, the
-correction is free.
+\section{Objective, benchmark and calibration procedure}
 
-Second, a plain-return reward should not be used at all in an unconstrained
-setting. It has no maximiser, and whatever an algorithm returns is determined by
-leverage limits and stopping rules rather than by the objective.
+Established analytic scope: finite horizon T, initial wealth $x_0$, deterministic positive risk-free gross returns $s_t$, unconstrained risky dollar holdings $u_t$, and independent excess-return vectors $P_t$ with means $m_t$ and positive-definite covariances $\Sigma_t$. Gaussian sampling is used for training, but the exact affine moment results only require finite second moments. Long-only weights are treated separately.
 
-Third, reported Sharpe ratios should not be used to compare policies trained on
-different rewards. Table~\ref{tab:sharpe} exhibits a reversal, and the mechanism
-is general: the Sharpe ratio and the mean-variance objective are different
-functionals of the terminal distribution, and nothing forces them to agree on an
-ordering. Where a ground truth is available, as in the synthetic setting used
-here, policies should be compared in policy space.
-
-%======================================================================
-\section{The differential Sharpe ratio}\label{sec:dsr}
-
-The reward class treated so far is the variance-penalised family. Both surveys
-report the differential Sharpe ratio of \citet{moody} as a further standard
-choice, and it does not obviously belong to that family: it depends on
-statistics accumulated along the trajectory and so is not a function of wealth
-alone.
-
-Write $\rho_t$ for the period return and let $A_t,B_t$ be exponentially weighted
-estimates of its first two moments with decay $\eta$,
-\[
-A_t=A_{t-1}+\eta(\rho_t-A_{t-1}),\qquad
-B_t=B_{t-1}+\eta(\rho_t^{2}-B_{t-1}),
-\]
-\[
-r^{\mathrm{DSR}}_t=\frac{B_{t-1}\Delta A_t-\tfrac12A_{t-1}\Delta B_t}
-{(B_{t-1}-A_{t-1}^{2})^{3/2}} .
-\]
-
-\begin{proposition}\label{prop:dsr}
-Up to a positive state-dependent scale and an additive constant,
-\[
-r^{\mathrm{DSR}}_t\;\propto\;\rho_t-\kappa^{\mathrm{eff}}_t\rho_t^{2},
-\qquad
-\kappa^{\mathrm{eff}}_t=\frac{A_{t-1}}{2B_{t-1}} .
-\]
-\end{proposition}
-
-\begin{proof}
-Substituting the increments,
-$B\Delta A-\tfrac12A\Delta B=\tfrac{\eta}{2}\bigl(2B\rho-A\rho^{2}-AB\bigr)$.
-Dividing by the denominator, which is positive and independent of $\rho_t$,
-gives a term linear in $\rho_t$ with coefficient $\eta B(B-A^{2})^{-3/2}$, a
-term in $\rho_t^{2}$ with coefficient $-\tfrac{\eta}{2}A(B-A^{2})^{-3/2}$, and a
-constant. The ratio of the second to the first is $A/(2B)$.
-\end{proof}
-
-So the differential Sharpe ratio is a variance-penalised reward after all. The
-distinction is that its penalty is not chosen. Since $A_t$ and $B_t$ are
-consistent estimators of the first two moments of the realised return, in the
-stationary regime
 \begin{equation}
-\kappa^{\mathrm{eff}}\;\longrightarrow\;\frac{\E[\rho]}{2\,\E[\rho^{2}]},
-\label{eq:kappaeff}
+\begin{aligned}
+ X_{t+1}&=s_tX_t+P_t^{\top}u_t,& J(\pi)&=\E[X_T]-\varphi\Var(X_T),\quad\varphi>0,\\
+ M_t&=\Sigma_t+m_tm_t^{\top},& d_t&=M_t^{-1}m_t,\quad\nu_t=m_t^{\top}d_t<1,\\
+ H_t&=\prod_{j=t+1}^{T-1}s_j,&u_t^{\mathrm{eq}}&=\frac{\Sigma_t^{-1}m_t}{2\varphi H_t}.
+ \end{aligned}
 \end{equation}
-a quantity containing no preference parameter at all. Numerically, over a
-$200$-period horizon the estimates converge to the true moments
-($A^{\star}=0.021636$ against $\E[\rho]=0.021676$; $B^{\star}=0.000479$ against
-$\E[\rho^{2}]=0.000482$), giving $\kappa^{\mathrm{eff}}=22.51$. Optimising the
-differential Sharpe reward directly over affine policies and then searching the
-variance-penalised family for the closest member returns $\kappa=21.56$, a
-$4\%$ agreement, at a residual policy distance of $0.019$.
+Li--Ng supply the precommitted reference; equilibrium control follows consistent planning. Our redesign targets equilibrium. If initial-date performance is the intended objective, use the precommitted benchmark and an appropriate terminal objective instead. \citep{ref9,ref10,ref7}
 
-Reading Theorem~\ref{thm:main} backwards then gives an implied risk aversion
+\subsection{A reward-design rule with an explicit guarantee}
 \begin{equation}
-\varphi^{\mathrm{implied}}=\frac{\kappa^{\mathrm{eff}}}{1-\nu}=27.9
+Y_t=H_tP_t^{\top}u_t,\qquad r_t^{\mathrm{design}}=Y_t-\varphi(1-\nu_t)Y_t^2.
 \end{equation}
-for this market. A practitioner selecting this reward believes they are asking
-for risk-adjusted return; they are in fact asking for a mean-variance criterion
-at a risk aversion the market sets and nothing in their setup reports. Varying
-the decay $\eta$ over $[0.02,0.4]$ moves it only between $30.4$ and $31.0$, so
-the effect is not a hyperparameter artefact.
+PROVED: conditional expected reward is strictly concave in $u_t$, wealth-independent, and maximised at $u_t^{\mathrm{eq}}$. Independence and unconstrained actions make these pointwise maximisers globally optimal for the additive reward. Scaling gains into terminal units removes the interest-driven obstruction of the original wealth-increment reward. Time-varying moments require date-specific calibration.
 
-The differential Sharpe ratio is therefore covered by
-Theorem~\ref{thm:main} rather than excluded from it, with
-$|\kappa^{\mathrm{eff}}-\varphi(1-\nu)|$ as the first term of $\Lambda$. What is
-different is that this term cannot be driven to zero by choice.
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/10_existing_transformations.pdf}
+\caption{NUMERICALLY VERIFIED. Existing MVPI adaptation agrees at zero interest but targets per-step mean-volatility away from it. With changing moments at zero interest, a common scalar penalty leaves distance 0.067715; the date-specific design gives zero.}
+\label{fig:10_existing_transformations}
+\end{figure}
+Implementation procedure: estimate or specify moments; declare the target and constraints; solve the exact reward problem where possible; report distance and terminal J; optimise reward parameters using a fixed reference occupancy; then train with the resulting reward and report its optimisation error separately.
 
-%======================================================================
-\section{Out of model}\label{sec:oom}
 
-Every result so far lives inside the i.i.d.\ market where the closed forms
-exist. We evaluate the four policies under processes matched to the same first
-two moments but violating the model in different ways: Student-$t$ innovations
-with four degrees of freedom, GARCH-like volatility clustering, and AR(1) serial
-correlation.
+\section{Theoretical contribution and its boundaries}
 
-\begin{table}[h]\centering\small
-\begin{tabular}{lrrrr}
+\subsection{The irreducible raw-reward mismatch --- PROVED}
+For iid returns set $d=M^{-1}m$, $\nu=m^{\top}d$ and $b=1/[2\varphi(1-\nu)]$. Assume $m\ne0$ and fixed $T\ge2$. For $r=\Delta X-\kappa(\Delta X)^2$, let D be the square root of summed expected squared action differences along the reward policy. Then, locally around $s=1$:
+
+\begin{equation}
+\begin{aligned}
+ \min_{\kappa>0}D(\pi^{\kappa},\pieq)&=c_T|s-1|+O((s-1)^2),\\
+ c_T&=\|d\|b\sqrt{\frac{T(T^2-1)}{3}+\frac{\nu(1-\nu)T(T-1)}{2}}.
+ \end{aligned}
+\end{equation}
+At zero interest exact matching requires $\kappa=\varphi(1-\nu)$. At nonzero interest and $T\ge2$ the final reward-optimal policy has wealth slope $-d(s-1)$, while equilibrium has zero slope and reachable wealth has positive variance. No scalar $\kappa$ removes that difference. The statement concerns this reward family, not all additive rewards.
+
+The proof closes the earlier remainder and minimisation gaps: write $h=1/(2\kappa)$; policy intercepts and controlled wealth are affine in h, so $D^2$ is exactly quadratic in h. Its coefficients are analytic in $s-1$ and its unique minimum remains interior near zero. This establishes the expansion after minimisation. At large fixed-parameter T, $c_T$ grows as $T^{3/2}$; this is not a joint uniform small-interest/large-horizon theorem.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/02_horizon_theorem.pdf}
+\caption{PROVED coefficient with NUMERICALLY VERIFIED finite-interest checks. Solid curves show exact calibration and dashed curves the local prediction. The earlier ``approximately linear in horizon'' claim is withdrawn.}
+\label{fig:02_horizon_theorem}
+\end{figure}
+\subsection{Changing moments and a common penalty --- PROVED}
+\begin{equation}
+\begin{gathered}
+ s_t=1:\qquad\min_{\kappa>0}D^2=\sum_{t=0}^{T-1}a_t(b_t-\bar b)^2,\\
+ a_t=\|d_t\|^2,\qquad b_t=\frac{1}{2\varphi(1-\nu_t)},\qquad
+ \bar b=\frac{\sum_t a_tb_t}{\sum_t a_t}.
+ \end{gathered}
+\end{equation}
+The lower bound is positive exactly when $b_t$ varies across positive-weight dates. Time variation by itself is insufficient. Degenerate zero means, the positivity condition for one-period matching, and the local nature of the theorem are retained in the proof appendix.
+
+
+\section{Fair comparison with published reward designs}
+
+NUMERICALLY VERIFIED: a separate long-only benchmark has $T=3$, $x_0=1$, $s=1.02$, one risky excess return $-$.18 or .30 with equal probability, zero costs, and a common 21-point weight grid in [0,1]. Bellman recursion exhaustively solves each finite reward tree. DSR state includes A and B. A one-step-game recursion solves the equilibrium on the same grid. The 11-point grid is also run.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/04_published_rewards.pdf}
+\caption{Adaptations of published formulas, not replications of their data, algorithms or reported performance. $\kappa/2=.05$ is a unit-sensitive coefficient copied from the Kolm--Ritter example and is shown only as a sensitivity diagnostic.}
+\label{fig:04_published_rewards}
+\end{figure}
+\begingroup\small
+\setlength{\LTpre}{8pt}\setlength{\LTpost}{8pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{longtable}{@{}L{\dimexpr 0.430\linewidth-2.580\tabcolsep\relax}L{\dimexpr 0.190\linewidth-1.140\tabcolsep\relax}L{\dimexpr 0.190\linewidth-1.140\tabcolsep\relax}L{\dimexpr 0.190\linewidth-1.140\tabcolsep\relax}@{}}
 \toprule
-process & pre-committed & equilibrium & surrogate $\kappa^{\star}$ & surrogate $\kappa=\varphi$\\
-\midrule
-Gaussian & $1.4267$ & $1.3236$ & $1.3261$ & $1.3166$\\
-Student-$t$ & $1.4252$ & $1.3238$ & $1.3263$ & $1.3166$\\
-vol.\ clustering & $1.4037$ & $1.3234$ & $1.3258$ & $1.3163$\\
-AR(1) momentum & $\mathbf{0.9285}$ & $1.1886$ & $1.1865$ & $\mathbf{1.2270}$\\
-\bottomrule
-\end{tabular}
-\caption{$J$ under model misspecification. Fat tails and volatility clustering
-leave the ranking intact; serial correlation reverses it.}
-\end{table}
-
-Fat tails and volatility clustering change $J$ in the third decimal and leave
-the ordering untouched, which is expected: they perturb higher moments while
-preserving independence across periods, and the analysis uses only the first
-two moments. The results are not artefacts of Gaussianity.
-
-Serial correlation is different and the ordering reverses. The pre-committed
-policy is worst affected, falling from $1.427$ to $0.929$: its wealth slope is
-calibrated to a drift that momentum makes wrong, and by construction it cannot
-revise. This is a real limitation rather than a caveat. Every closed form here
-assumes independence across periods, and once that fails the reference policies
-are no longer the objects they are claimed to be.
-
-\subsection{Statistical power of a backtest}
-
-Section~\ref{sec:numerics} shows the Sharpe ratio ordering these policies
-incorrectly. A natural objection is that the difference may be too small to
-matter. The question is then whether a finite backtest could detect it.
-
-Drawing $n$ independent replications and asking how often the Sharpe comparison
-selects the policy with the better mean-variance objective:
-
-\begin{table}[h]\centering\small
-\begin{tabular}{rr}
+\textbf{Adapted reward} & \textbf{Distance} & \textbf{Terminal J} & \textbf{Excess Sharpe}\\
+\midrule\endfirsthead
 \toprule
-replications & $\Pr(\text{Sharpe selects the }J\text{-better policy})$\\
-\midrule
-$10$ & $0.022$\\
-$50$ & $0.003$\\
-$200$ & $0.000$\\
-$1000$ & $0.000$\\
-$5000$ & $0.000$\\
-\bottomrule
-\end{tabular}
-\end{table}
+\textbf{Adapted reward} & \textbf{Distance} & \textbf{Terminal J} & \textbf{Excess Sharpe}\\
+\midrule\endhead
+\bottomrule\endfoot
+Value change & 0.97894 & 1.012819 & 0.39950\\[3pt]
+Log growth & 0.97894 & 1.012819 & 0.39950\\[3pt]
+DSR & 0.63257 & 1.092687 & 0.43313\\[3pt]
+Published .05 diagnostic & 0.97894 & 1.012819 & 0.39950\\[3pt]
+Raw $\kappa=\varphi$ & 0.05848 & 1.107849 & 0.43275\\[3pt]
+Scalar calibration & 0.05313 & 1.108217 & 0.43368\\[3pt]
+Terminal-unit design & 0.04137 & 1.107729 & 0.43138\\[3pt]
+Grid equilibrium & 0.00000 & 1.108204 & 0.43369\\[3pt]
+\end{longtable}
+\endgroup
 
-More data makes the comparison \emph{more} confidently wrong, because it
-estimates the wrong quantity with increasing precision. This is the sharpest
-form of the claim: reward-design error is not merely hard to see in a backtest,
-it is invisible in a way that additional data aggravates.
+The design improves alignment over raw and scalar rewards in this configuration, but has slightly lower J than either. It does not exactly recover the constrained equilibrium: wealth-dependent feasible dollar holdings invalidate the unconstrained proof. Return and log-growth policies pursue different preferences, so their terminal-MV rankings are not evidence that they fail at their own tasks.
 
-%======================================================================
-\section{Limitations and open problems}\label{sec:limits}
+DSR uses $\eta=.1$, $A_0=.01$, $B_0=.01$ here. Sensitivity tests vary all three. Reward shapes are transferred; PPO/DDPG, RRL, trading costs, historical datasets and original train/test protocols are not reproduced. Algorithms cannot be ranked from this experiment.
 
-\paragraph{Priority.} The distinction between summed per-period mean-variance
-tradeoffs and the terminal criterion is standard in portfolio choice
-\citep{garleanu,demiguel,ling}. What we believe to be new is the quantitative
-map, Theorem~\ref{thm:main}. Searches of the equilibrium mean-variance and
-dynamic-trading literatures did not turn it up, and
-Section~\ref{sec:ct} offers a reason: the correction is $\mathcal{O}(\Delta)$ and
-vanishes in continuous time, which is where that literature works. This is an
-argument, not a proof of priority. The author has not conducted a systematic
-search and this must be done before the claim is made in a submitted version. If
-$\kappa^{\star}=\varphi(1-\nu)$ is known, the contribution reduces to the
-decomposition, the transfer to reinforcement learning, and
-Section~\ref{sec:numerics}.
 
-\paragraph{Rigour.} Theorem~\ref{thm:t2} is established by series expansion with
-the error terms confirmed numerically rather than bounded. Conjecture~\ref{conj}
-is supported by fitted exponents only.
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<150pt\newpage\fi
 
-\paragraph{Scope.} Returns are i.i.d.\ with known moments; there are no
-transaction costs, no short-sale constraints and no leverage limits. Wealth is
-unbounded below, so the policies here permit ruin; imposing a no-bankruptcy
-constraint would forfeit the closed forms on which the whole comparison rests.
+\section{Exact values, dependent returns and DSR}
 
-\paragraph{Dependent returns.} Section~\ref{sec:oom} shows the ordering
-reversing under AR(1) serial correlation, so the analysis should not be read as
-applying to markets with predictability.
-Proposition~\ref{prop:recursion} extends directly to time-varying
-$(m_t,M_t,s_t)$, with $\nu_t$ replacing $\nu$; Theorem~\ref{thm:main} then
-requires $s_t=1$ for all $t$ and $\kappa=\varphi(1-\nu_t)$ simultaneously, which
-is generally infeasible for a single $\kappa$. Establishing the size of the
-resulting gap is open, and is the most important of the extensions listed here.
+\begingroup\small
+\setlength{\LTpre}{8pt}\setlength{\LTpost}{8pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{longtable}{@{}L{\dimexpr 0.430\linewidth-2.580\tabcolsep\relax}L{\dimexpr 0.190\linewidth-1.140\tabcolsep\relax}L{\dimexpr 0.190\linewidth-1.140\tabcolsep\relax}L{\dimexpr 0.190\linewidth-1.140\tabcolsep\relax}@{}}
+\toprule
+\textbf{Independent benchmark} & \textbf{Policy distance} & \textbf{Terminal J} & \textbf{Excess Sharpe}\\
+\midrule\endfirsthead
+\toprule
+\textbf{Independent benchmark} & \textbf{Policy distance} & \textbf{Terminal J} & \textbf{Excess Sharpe}\\
+\midrule\endhead
+\bottomrule\endfoot
+Precommitted reference & 3.312087 & 1.425799 & 1.171951\\[3pt]
+Equilibrium & 0.000000 & 1.323644 & 0.982266\\[3pt]
+Raw $\kappa=\varphi$ & 0.797127 & 1.316580 & 0.987285\\[3pt]
+Scalar calibration & 0.195347 & 1.326115 & 0.987292\\[3pt]
+Best scalar in raw family & 0.186435 & 1.326093 & 0.987292\\[3pt]
+Terminal-unit design & 0.000000 & 1.323644 & 0.982266\\[3pt]
+\end{longtable}
+\endgroup
 
-\paragraph{On $\epssurr$.} The quantity $\epssurr$ is a difference of scalar
-values and is not sign-definite; at $\kappa^{\star}$ in our market it is
-$-0.0025$, the surrogate optimum beating the equilibrium policy. Statements of
-the form ``$\epssurr=0$ if and only if'' are therefore false and all results here
-are stated for the policy distance, with the value gap as a consequence.
+NUMERICALLY VERIFIED: $T=4$, $\varphi=1$, $s=1.02$. Distance falls from .797127 to .195347 after zero-interest scalar calibration and to numerical zero after redesign. Raw reward has higher excess Sharpe than equilibrium (.987285 vs .982266), but lower J (1.316580 vs 1.323644). Sharpe uses excess terminal gain over $x_0s^T$ and is not annualised.
 
-%======================================================================
-\section*{Reproducibility}
+\subsection{Dependence introduces an intertemporal hedge --- PROVED}
+\begin{equation}
+u^{\mathrm{eq}}(t,z)=\frac{m_z}{2\varphi H_t\Var(P\mid z)}
+ -\frac{\operatorname{Cov}(P,a_{t+1}(z_{t+1})\mid z)}{H_t\Var(P\mid z)}.
+\end{equation}
+In the observed finite-regime model, $a_{t+1}$ is the expected terminal continuation gain. A calibration using only current conditional moments omits this covariance. Adding $-2\varphi H_tu\allowbreak\operatorname{Cov}(P,a_{t+1}\mid z)$ to the terminal-unit reward recovers equilibrium. This is an oracle construction using an already solved continuation, not a model-free learning result or a novel hedging principle. \citep{ref10}
 
-All numerical results are produced by the accompanying code. The verification
-suite runs ten independent checks, including agreement between the closed-form
-pre-committed policy and an unconstrained numerical maximiser to
-$2.6\mathrm{e}{-}12$, and direct testing of the equilibrium condition
-\eqref{eq:equilibrium} by attempting to beat it.
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/05_dependent_returns.pdf}
+\caption{NUMERICALLY VERIFIED exact joint return/regime recursion. At persistence .8, raw distance is .365102, local calibration .317644, hedge-corrected reward numerical zero. Raw J exceeds equilibrium J here; that is consistent with the target being equilibrium.}
+\label{fig:05_dependent_returns}
+\end{figure}
+R6 --- PROVED: bounded finite-horizon DSR is well posed with state augmentation and $B_0-A_0^2>0$. Its local quadratic identity does not establish dynamic equivalence to a fixed variance penalty. Fixed-decay EWMA has positive limiting variance; the earlier consistency claim is false. Unrestricted or infinite-horizon DSR remains OPEN.
+
+
+\section{Robustness and the limits of transfer}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/03_risk_regimes.pdf}
+\caption{NUMERICALLY VERIFIED. Common-scale $\varphi\times\text{distance}$ across risk aversion and interest. The full grid has 120 parameter configurations: five horizons, six risk aversions and four rates, each with six exact reference/reward policies. Maximum redesign discrepancy is $2.35\times10^{-14}$.}
+\label{fig:03_risk_regimes}
+\end{figure}
+Additional exact checks vary mean, volatility and correlation over 27 markets. Redesign discrepancy remains below $5.50\times10^{-15}$. These verify the scoped identity, not robustness of estimated models to arbitrary market misspecification.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/08_estimation_robustness.pdf}
+\caption{PRELIMINARY. Left: thirty independent moment-estimation samples at each size, mean $\pm$ sample SD. Right: frozen policies on ten batches of 50,000 paths, mean $\pm$ sample SD. GARCH and AR(1) are dependent stress tests; iid optimality is not asserted there.}
+\label{fig:08_estimation_robustness}
+\end{figure}
+The design needs accurate moments. Estimation experiments evaluate policies built from estimated moments in the true market. Stress tests hold policies fixed: matched-moment iid t(8) preserves the moment-based result, but serial correlation can reverse performance. Under AR(1), design minus raw J is $-$.03813 (batch SE .00027); under Gaussian iid it is +.00713 (SE .00018). No universal robustness advantage is claimed.
+
+
+\section{Separate learning error from reward-design error}
+
+\begin{equation}
+\begin{aligned}
+ J(\pipre)-J(\pihat)
+ &=\underbrace{J(\pipre)-J(\pieq)}_{\text{price of time consistency}}\\
+ &\quad+\underbrace{J(\pieq)-J(\pir)}_{\text{signed reward-design difference}}\\
+ &\quad+\underbrace{J(\pir)-J(\pihat)}_{\text{signed learning difference}}.
+ \end{aligned}
+\end{equation}
+The identity telescopes. Only the first term is guaranteed nonnegative in this benchmark. The last two are signed differences in the financial objective. Report a separate nonnegative surrogate regret: expected reward at its exact optimum minus expected reward of the learned policy. Policy distance always uses the declared reference occupancy.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/06_learning_error.pdf}
+\caption{PRELIMINARY. Five paired seeds per reward, 4,000 iterations and batches of 512, common affine policy family, Adam learning rate .02 and exploration schedule. This is the existing REINFORCE-style implementation with normalised advantages and scaled scores. No convergence theorem is asserted.}
+\label{fig:06_learning_error}
+\end{figure}
+\begingroup\small
+\setlength{\LTpre}{8pt}\setlength{\LTpost}{8pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{longtable}{@{}L{\dimexpr 0.180\linewidth-1.080\tabcolsep\relax}L{\dimexpr 0.280\linewidth-1.680\tabcolsep\relax}L{\dimexpr 0.340\linewidth-2.040\tabcolsep\relax}L{\dimexpr 0.200\linewidth-1.200\tabcolsep\relax}@{}}
+\toprule
+\textbf{Learned reward} & \textbf{Mean distance $\pm$ SD} & \textbf{Mean J $\pm$ SD} & \textbf{Mean surrogate regret}\\
+\midrule\endfirsthead
+\toprule
+\textbf{Learned reward} & \textbf{Mean distance $\pm$ SD} & \textbf{Mean J $\pm$ SD} & \textbf{Mean surrogate regret}\\
+\midrule\endhead
+\bottomrule\endfoot
+raw & 0.8638 $\pm$ 0.1890 & 1.305628 $\pm$ 0.001303 & 0.003584\\[3pt]
+scalar & 0.8312 $\pm$ 0.0978 & 1.302556 $\pm$ 0.003415 & 0.005381\\[3pt]
+design & 0.8079 $\pm$ 0.0807 & 1.300671 $\pm$ 0.003543 & 0.005640\\[3pt]
+\end{longtable}
+\endgroup
+
+The exact redesign is aligned, but the learned redesign retains substantial distance. Its mean J is lower than the learned raw reward at this budget. Thus the current learning experiment does not support improved financial performance or broad algorithmic superiority. Reward regret is reported in each reward's own units; comparisons of its scale across rewards require care.
+
+The fair next algorithm study must tune each reward on a separate validation budget, keep environment interactions and policy capacity comparable, add seeds, and report uncertainty and failures. The current experiment is a diagnosis, not a finished PPO/DDPG benchmark.
+
+
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<150pt\newpage\fi
+
+\section{What is established, and what remains proposed}
+
+\begingroup\small
+\setlength{\LTpre}{8pt}\setlength{\LTpost}{8pt}
+\renewcommand{\arraystretch}{1.18}
+\begin{longtable}{@{}L{\dimexpr 0.370\linewidth-1.480\tabcolsep\relax}L{\dimexpr 0.200\linewidth-0.800\tabcolsep\relax}L{\dimexpr 0.430\linewidth-1.720\tabcolsep\relax}@{}}
+\toprule
+\textbf{Result} & \textbf{Status} & \textbf{Boundary}\\
+\midrule\endfirsthead
+\toprule
+\textbf{Result} & \textbf{Status} & \textbf{Boundary}\\
+\midrule\endhead
+\bottomrule\endfoot
+R1 \textperiodcentered{} Raw reward recursion and zero-interest match & PROVED & Known control tools; zero-interest result also follows from MVPI.\\[3pt]
+R2 \textperiodcentered{} Fixed-horizon mismatch coefficient & PROVED & Project derivation; literature priority not established.\\[3pt]
+R3 \textperiodcentered{} Terminal-unit independent-return redesign & PROVED & Unconstrained dollar actions; known moments; equilibrium target.\\[3pt]
+R4 \textperiodcentered{} Common-penalty lower bound under changing moments & PROVED & Zero interest; nonzero-mean dates; weighted dispersion formula.\\[3pt]
+R5 \textperiodcentered{} Observed-regime hedge and oracle correction & PROVED & Scalar risky return, exogenous observed regimes; solved continuation required.\\[3pt]
+R6 \textperiodcentered{} DSR algebra and finite-horizon well-posedness & PROVED & Bounded returns, positive initial EWMA variance; no infinite-horizon theorem.\\[3pt]
+R7 \textperiodcentered{} Reward adaptations and parameter sweeps & NUMERICALLY VERIFIED & Exact recursions / exact finite action trees in specified markets.\\[3pt]
+R8 \textperiodcentered{} Training and estimation evidence & PRELIMINARY & Five training seeds; thirty estimation seeds; no broad superiority claim.\\[3pt]
+\end{longtable}
+\endgroup
+
+\subsection{What can a researcher do now?}
+Audit an additive financial reward against a specified equilibrium, compute its exact induced policy and mismatch without learning noise, choose the best scalar penalty in the raw family, and determine whether a structural redesign is required. Under independent known moments, implement the displayed reward to recover equilibrium exactly. Under observable dependence, identify the missing continuation hedge rather than assume local calibration suffices.
+
+\subsection{Remaining research, with acceptance criteria}
+OPEN --- Publication priority: obtain the full discrete-control prior and compare the exact coefficient and redesign with earlier inverse-control and risk-sensitive RL results. Claim no ``first'' result before this is done. Existing MVPI equivalence must remain in the final positioning.
+
+OPEN --- Constraints and costs: derive or numerically solve reward designs for wealth-dependent feasible sets, transaction costs and multiple dependent assets. Require a shared feasible benchmark and a quantified discretisation error before claiming exact recovery.
+
+OPEN --- DSR: analyse unrestricted policies or an appropriately regularised infinite-horizon formulation. A bounded finite-grid calculation cannot establish a constant implied terminal risk aversion or a global DSR theorem.
+
+PROPOSED --- Learning and practical validation: expand tuned policy-gradient, PPO and DDPG comparisons, implement estimated continuation hedges, and test with a preregistered historical protocol. Success means improved target alignment with controlled learning error; Sharpe and raw return remain secondary, separately reported outcomes.
+
+The former general-horizon conjecture is resolved locally. The broad global Lambda inequality is withdrawn.
+
+
+\clearpage
+
+\section{Evidence that changes the interpretation}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/07_sharpe_dsr.pdf}
+\caption{NUMERICALLY VERIFIED. The Sharpe/J ranking disagreement survives the corrected risk-free subtraction. DSR initial allocation varies materially with EWMA initialisation and decay; the experiment optimises full finite-horizon continuation.}
+\label{fig:07_sharpe_dsr}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figures/09_decomposition_markets.pdf}
+\caption{PRELIMINARY learning decomposition (left), NUMERICALLY VERIFIED moment sweep (right). Signed components must not be presented as three nonnegative losses. Ordered market curves compare each method's distribution of distances, not paired x-axis cases.}
+\label{fig:09_decomposition_markets}
+\end{figure}
+Main limitations: analytically simple markets and unconstrained dollar positions; moment and model knowledge; oracle continuation in the dependent redesign; small exact constrained trees; five training seeds; no transaction-cost or historical replication. These are deliberate boundaries of the evidence.
+
+The research contribution is therefore an exact, reproducible diagnostic and a conditional design result. It is stronger than an abstract framework, but narrower than a claim that a new reward generally improves financial RL.
+
+
+\clearpage
 
 \appendix
-%======================================================================
-\section{Derivation of the constant in Theorem~\ref{thm:t2}}\label{app:t2}
 
-Set $s=1+\epsilon$ and $T=2$. All quantities are expanded to the order needed for
-the $\epsilon^{2}$ coefficient of the squared distance.
-
-\paragraph{Surrogate side.} From Proposition~\ref{prop:recursion} with
-$p_2=q_2=0$: $g_1=\kappa\epsilon$, so
+% Typeset proof appendix. Mathematical content corresponds to notes/PROOFS.md.
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Second moments and the exact reward recursion}
+\label{app:recursion}
+For the wealth increment $\Delta X_t$, the raw reward satisfies
 \[
-\alpha_1=-d\,\epsilon,\qquad \beta_1=\frac{d}{2\kappa},\qquad
-p_1=-(1-\nu)\kappa\epsilon^{2},\qquad
-1+q_1=1+\epsilon(1-\nu)+O(\epsilon^{2}).
+ \E[\Delta X_t-\kappa(\Delta X_t)^2]
+ =\E[\Delta X_t]-\kappa\Var(\Delta X_t)-\kappa\E[\Delta X_t]^2.
 \]
-Then $g_0=\kappa\epsilon+O(\epsilon^{2})$ and $\kappa-p_1=\kappa(1+O(\epsilon^2))$,
-so
+Calling this simply a variance penalty hides an additional squared-mean penalty.
+The conditional-variance reward $m^{\top}u-\varphi u^{\top}\Sigma u$ has a different
+optimum. The zero-interest calibration follows from this distinction and the
+Sherman--Morrison identity; it is not an unexplained failure of Bellman optimisation.
+
+\begin{proposition}[Exact raw-reward recursion; proved]
+Let $M_t=\Sigma_t+m_tm_t^{\top}$, $d_t=M_t^{-1}m_t$ and
+$\nu_t=m_t^{\top}d_t$. For the quadratic increment reward, write the value function as
+$W_t(x)=p_tx^2+q_tx+c_t$ and put
+$g_t=\kappa(s_t-1)-p_{t+1}s_t$. The optimal action is
+$u_t(x)=\alpha_tx+\beta_t$, where
+\begin{align}
+ \alpha_t&=-\frac{d_tg_t}{\kappa-p_{t+1}},&
+ \beta_t&=\frac{d_t(1+q_{t+1})}{2(\kappa-p_{t+1})},\\
+ p_t&=\frac{\kappa p_{t+1}-(1-\nu_t)g_t^2}{\kappa-p_{t+1}},&
+ 1+q_t&=(1+q_{t+1})\left(s_t-\frac{\nu_tg_t}{\kappa-p_{t+1}}\right),
+\end{align}
+with $p_T=q_T=0$.
+\end{proposition}
+\begin{proof}
+Completing the square in the Bellman maximisation yields the displayed formulas.
+The action Hessian is $-2(\kappa-p_{t+1})M_t$. Backward induction gives $p_t\le0$,
+so this Hessian is negative definite. The maximisation is therefore over all
+admissible Markov actions, not merely an affine search class. The constant $c_t$
+does not affect actions.
+\end{proof}
+For iid moments and $s=1$, the optimum is $d/(2\kappa)$, whereas equilibrium is
+$\Sigma^{-1}m/(2\varphi)=d/[2\varphi(1-\nu)]$. For $m\ne0$, they agree if and
+only if $\kappa=\varphi(1-\nu)$. For $m=0$, both are zero for every $\kappa>0$.
+
+For $T=1$, matching refers to the initial action, not equality of functions at
+all wealth values. If $m\ne0$, a positive finite matching penalty exists precisely when
 \[
-\alpha_0=-d\,\epsilon+O(\epsilon^{2}),\qquad
-\beta_0=\frac{d}{2\kappa}\bigl(1+\epsilon(1-\nu)\bigr)+O(\epsilon^{2}).
+ \frac{1}{2\varphi(1-\nu)}+(s-1)x_0>0.
 \]
-The wealth slope is thus $-d\epsilon$ at both dates, independent of $\kappa$ at
-leading order. This is the source of the irreducible gap.
 
-\paragraph{Equilibrium side.} From the proof of Theorem~\ref{thm:main},
-$\alpha^{\mathrm{eq}}_t=0$, $A_t=s^{T-t}$, $B_t=s^{2(T-t)}$ and $b_t=2sa_t$,
-whence $D_{t+1}=s^{2(T-t-1)}(M-mm^{\top})$ and
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{General-horizon small-interest mismatch}
+\label{app:horizon}
+\begin{theorem}[Fixed-horizon local mismatch; proved]
+Let $m\ne0$ and $\Sigma\succ0$ be constant, $T\ge2$ fixed, $s=1+e$, and
+$b=1/[2\varphi(1-\nu)]$. Define the one-sided occupancy discrepancy
 \[
-\beta^{\mathrm{eq}}_1=\frac{d}{2\varphi(1-\nu)},\qquad
-\beta^{\mathrm{eq}}_0=\frac{d}{2\varphi s(1-\nu)} .
+ D^2(\pi^\kappa,\pieq)
+ =\sum_{t=0}^{T-1}\E_{\pi^\kappa}
+   \bigl\|\pi^\kappa(t,X_t)-\pieq(t,X_t)\bigr\|^2.
 \]
+For sufficiently small $|e|$,
+\begin{align}
+ \min_{\kappa>0}D(\pi^\kappa,\pieq)&=c_T|e|+O(e^2),\\
+ c_T&=\|d\|b\sqrt{\frac{T(T^2-1)}{3}
+            +\frac{\nu(1-\nu)T(T-1)}{2}}.
+\end{align}
+\end{theorem}
+The quantity $D$ is a discrepancy rather than a symmetric metric. For $T=2$,
+the bracket is $(2-\nu)(1+\nu)$. As $T\to\infty$ with other parameters fixed,
+$c_T\sim\|d\|bT^{3/2}/\sqrt{3}$; no uniform joint limit in $e$ and $T$ is asserted.
 
-\paragraph{Distance.} Write $b^{\star}=(2\varphi(1-\nu))^{-1}$ and parametrise
-$\kappa=\kappa^{\star}(1+w\epsilon)$ with $\kappa^{\star}=\varphi(1-\nu)$, so
-that $(2\kappa)^{-1}=b^{\star}(1-w\epsilon)+O(\epsilon^2)$. Using
-\eqref{eq:distance} with $x_0$ deterministic and
-$\E[x_1]=s+\nu\beta_0$, $\E[x_1^2]=s^2+2s\nu\beta_0+\nu\beta_0^2$ at leading
-order, the squared distance in units of $\|d\|^{2}$ is
+\begin{proof}
+Divide $p_t$ by $\kappa$ in the recursion. The quantities $p_t/\kappa$ and
+$q_t$, hence $\alpha_t$, are independent of $\kappa$, while $\beta_t$ is linear
+in $h=1/(2\kappa)$. On each common return path, controlled wealth has the form
+$X_t=L_t(e)x_0+hZ_t(e)$. Consequently $F(e,h)=D^2$ is exactly quadratic in $h$.
+Its coefficients are analytic near $e=0$: the finite backward recursions have
+nonzero denominators there, and moment propagation uses only finite second moments.
+At zero interest,
 \[
-\bigl(\alpha_0+\beta_0-\beta^{\mathrm{eq}}_0\bigr)^{2}
-+\alpha_1^{2}\E[x_1^{2}]+2\alpha_1(\beta_1-\beta^{\mathrm{eq}}_1)\E[x_1]
-+(\beta_1-\beta^{\mathrm{eq}}_1)^{2}.
+ F(0,h)=T\|d\|^2(h-b)^2.
 \]
-Expanding and retaining the $\epsilon^{2}$ coefficient gives a quadratic in $w$.
-Minimising over $w$ and simplifying yields
+The coefficient of $h^2$ is strictly positive. The global unconstrained minimiser
+$h^*(e)$ is therefore analytic and stays positive near zero, so it is also the
+global minimiser over $h>0$. This justifies the minimisation and local Taylor
+expansion without assuming that a fitted local optimum is global.
+
+Write $\kappa=\varphi(1-\nu)(1+we)$. Uniformly for bounded $w$,
+\begin{align*}
+ \alpha_t&=-de+O(e^2),\\
+ \beta_t&=db\{1+[(T-t-1)(1-\nu)-w]e\}+O(e^2),\\
+ \beta_t^{\mathrm{eq}}&=db[1-(T-t-1)e]+O(e^2).
+\end{align*}
+At $e=0$, the common policy is $db$, so
 \[
-\min_{w}\;\frac{\|\pir-\pieq\|^{2}}{\|d\|^{2}\epsilon^{2}}
-=\frac{(2-\nu)(1+\nu)}{4\varphi^{2}(1-\nu)^{2}},
+ \E[X_t]=x_0+t\nu b,\qquad
+ \Var(X_t)=tb^2\nu(1-\nu).
 \]
-and taking the square root gives the constant of Theorem~\ref{thm:t2}. The
-algebra was carried out with a computer algebra system and the resulting
-expression checked against direct numerical minimisation on six markets,
-agreeing to $0.11\%$ worst case with fitted exponent $1.0000$.
+The leading action difference is $de$ times the scalar random variable
+\[
+ -X_t+b[(T-t-1)(2-\nu)-w].
+\]
+Its means form an arithmetic progression with step $-2b$. Minimisation gives
+$w^*=(T-1)(1-\nu)-x_0/b$, and the centred means are $b(T-1-2t)$.
+Their squared sum is $b^2T(T^2-1)/3$; the sum of the variances is
+$b^2\nu(1-\nu)T(T-1)/2$. Analyticity yields
+$\min_hF(e,h)=c_T^2e^2+O(e^3)$. Since $c_T>0$, taking square roots gives
+remainder $O(e^2)$.
+\end{proof}
 
-\begin{remark}
-The step that does not generalise mechanically to $T\ge3$ is the last: the
-number of terms in the $\epsilon^{2}$ coefficient grows with the horizon, and
-while $w^{\star}$ remains the minimiser of a quadratic, we have not found a
-closed form for the resulting expression.
-\end{remark}
+The same leading coefficient holds under fixed equilibrium occupancy: at
+$e=0$ the occupancies coincide and only zeroth-order moments enter the leading
+quadratic term. Away from zero interest, these discrepancies differ and must be labelled.
 
-%======================================================================
-\begin{thebibliography}{99}\small
+For $m\ne0$, $s\ne1$ and $T\ge2$, exact matching along the surrogate occupancy
+is impossible. Matching at time zero forces the nonzero equilibrium action,
+hence positive next-wealth variance. Subsequent nonzero equilibrium actions
+preserve positive variance. At the final date, the surrogate slope is $-d(s-1)$
+and the equilibrium slope is zero, contradicting almost-sure matching.
+This obstruction concerns the raw increment family, not all additive rewards.
 
-\bibitem[Bai et al.(2024)]{bai} Bai, Y., Gao, Y., Wan, R., Zhang, S. and Song, R.
-(2024). A Review of Reinforcement Learning in Financial Applications.
-arXiv:2411.12746.
+No global bound of the previously proposed form
+\[
+ D\le C\bigl(|\kappa-\kappa_0|+c|s-1|\bigr)
+\]
+with $C$ constant over all $\kappa>0$ follows. At $s=1$,
+$D=\sqrt{T}\|d\||1/(2\kappa)-b|$ diverges as $\kappa\downarrow0$ while the
+proposed right-hand side remains bounded. A local bound on compact positive
+penalty sets is valid by smoothness.
 
-\bibitem[Basak and Chabakauri(2010)]{basak} Basak, S. and Chabakauri, G. (2010).
-Dynamic Mean-Variance Asset Allocation. \emph{Review of Financial Studies}
-23(8), 2970--3016.
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Time-varying independent returns and reward redesign}
+\label{app:redesign}
+Let $H_t=\prod_{j=t+1}^{T-1}s_j$, with empty product one.
+\begin{proposition}[Independent-return exact recovery; proved]
+Under independent returns, deterministic positive rates, known first two
+moments and unconstrained risky dollar holdings, the equilibrium action is
+\[
+ u_t^{\mathrm{eq}}=\frac{\Sigma_t^{-1}m_t}{2\varphi H_t}.
+\]
+The additive reward
+\[
+ Y_t=H_tP_t^{\top}u_t,\qquad
+ r_t^{\mathrm{design}}=Y_t-\varphi(1-\nu_t)Y_t^2
+\]
+has this same optimal action at each date.
+\end{proposition}
+\begin{proof}
+Under future deterministic holdings,
+$X_T=H_t(s_tx+P_t^{\top}u)+\text{future gains}$.
+Independence removes action-dependent covariance with future gains. The
+one-step objective has action-dependent part
+\[
+ H_tm_t^{\top}u-\varphi H_t^2u^{\top}\Sigma_tu.
+\]
+Strict concavity gives the stated action; backward induction establishes
+deterministic equilibrium holdings.
 
-\bibitem[Björk and Murgoci(2014)]{bjork} Björk, T. and Murgoci, A. (2014). A
-Theory of Markovian Time-Inconsistent Stochastic Control in Discrete Time.
-\emph{Finance and Stochastics} 18(3), 545--592.
+Each conditional expected redesigned reward is strictly concave in $u$ and
+independent of wealth. Exogenous independent returns and unconstrained actions
+make pointwise maximisation at every date globally optimal for the additive
+expectation, even among history-dependent policies. Its maximiser is
+\[
+ \frac{d_t}{2\varphi(1-\nu_t)H_t}=u_t^{\mathrm{eq}}.
+\]
+\end{proof}
+The redesign measures excess gains in terminal units and applies date-specific
+calibration. It reproduces equilibrium, not the precommitted optimum. The
+alternative conditional-variance reward
+$Y_t-\varphi H_t^2u_t^{\top}\Sigma_tu_t$ has the same conditional maximiser.
+Both constructions require moments and a specified target. Neither implies a
+universal improvement in initial $J$: another policy can outperform equilibrium
+at time zero.
 
-\bibitem[Björk et al.(2014)]{bjorkzhou} Björk, T., Murgoci, A. and Zhou, X. Y.
-(2014). Mean-Variance Portfolio Optimization with State-Dependent Risk Aversion.
-\emph{Mathematical Finance} 24(1), 1--24.
+If every $s_t=1$, a common raw $\kappa$ matches equilibrium if and only if all
+nonzero-mean dates have the same $\nu_t$ and $\kappa=\varphi(1-\nu_t)$.
+Writing $a_t=\|d_t\|^2$ and $b_t=1/[2\varphi(1-\nu_t)]$, all holdings are
+deterministic and
+\[
+ D^2=\sum_ta_t(h-b_t)^2,\qquad
+ \min_hD^2=\sum_ta_t(b_t-\bar b)^2,\qquad
+ \bar b=\frac{\sum_ta_tb_t}{\sum_ta_t}.
+\]
+This lower bound is positive exactly when $b_t$ varies over positive-weight
+dates. Time variation alone does not imply unavoidable mismatch: $\nu_t$ may
+remain constant. If all $a_t=0$, every action is zero and the distance is zero;
+$\bar b$ need not be defined.
 
-\bibitem[DeMiguel et al.(2015)]{demiguel} DeMiguel, V., Nogales, F. J. and Uppal, R.
-(2015). Stock Return Serial Dependence and Out-of-Sample Portfolio Performance.
-\emph{Review of Financial Studies} 27(4), 1031--1073.
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Predictable Markov returns and the continuation hedge}
+\label{app:dependence}
+For scalar excess return $P$ and observed finite regime $z$, specify the joint
+conditional law of $(P,z_{t+1})$. Rates are deterministic. Let equilibrium
+terminal-mean continuation be
+$f_{t+1}(x,z')=H_tx+a_{t+1}(z')$; its conditional variance is independent of wealth.
+The current action-dependent variance is
+\[
+ H_t^2\Var(P\mid z)u^2
+ +2H_t\operatorname{Cov}(P,a_{t+1}(z_{t+1})\mid z)u.
+\]
+Therefore
+\begin{equation}
+ u^{\mathrm{eq}}(t,z)=\frac{m_z}{2\varphi H_t\Var(P\mid z)}
+ -\frac{\operatorname{Cov}(P,a_{t+1}(z_{t+1})\mid z)}{H_t\Var(P\mid z)}.
+\end{equation}
+Backward propagation of conditional first and second moments establishes the
+formula. Positive conditional return variance makes this a strict global
+one-step maximum. Substituting $\kappa=\varphi(1-\nu_z)$ state by state produces
+only the first term. A nonzero hedge covariance defeats this substitution even
+at zero interest.
 
-\bibitem[Gârleanu and Pedersen(2013)]{garleanu} Gârleanu, N. and Pedersen, L. H.
-(2013). Dynamic Trading with Predictable Returns and Transaction Costs.
-\emph{Journal of Finance} 68(6), 2309--2340.
+An equilibrium-informed reward is
+\begin{align}
+ r&=Y-\varphi(1-\nu_z)Y^2
+       -2\varphi\operatorname{Cov}(P,a_{t+1}\mid z)H_tu,\\
+ Y&=H_tPu.
+\end{align}
+Its conditional derivative gives exactly $u^{\mathrm{eq}}$. Exogenous
+transitions and wealth independence make these pointwise maximisers globally
+optimal for the sum. This is inverse control using an already solved
+continuation, not a model-free shortcut or a novelty claim. The relevant
+diagnostic is the quantified failure of local calibration and recovery of the
+missing hedge. Mean--variance hedging under dependence is established literature.
 
-\bibitem[Hambly et al.(2023)]{hambly} Hambly, B., Xu, R. and Yang, H. (2023).
-Recent Advances in Reinforcement Learning in Finance. \emph{Mathematical Finance}
-33(3), 437--503.
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Differential Sharpe: finite-horizon conclusions}
+\label{app:dsr}
+With $A'=A+\eta(\rho-A)$, $B'=B+\eta(\rho^2-B)$ and $V=B-A^2>0$,
+\begin{equation}
+ V'=(1-\eta)V+\eta(1-\eta)(\rho-A)^2>0,\qquad0<\eta<1.
+\end{equation}
+For bounded returns $|\rho|\le R$, finite $T$, and $V_0>0$,
+$V_t\ge(1-\eta)^tV_0>0$, and the DSR reward is bounded on the reachable
+finite-horizon state set. A state including market predictors, previous holdings
+if costs apply, wealth, $A$ and $B$ supports ordinary finite-horizon Bellman
+recursion. No infinite-horizon fixed-point conclusion follows without additional assumptions.
 
-\bibitem[Li and Ng(2000)]{ling} Li, D. and Ng, W.-L. (2000). Optimal Dynamic
-Portfolio Selection: Multiperiod Mean-Variance Formulation. \emph{Mathematical
-Finance} 10(3), 387--406.
+The unscaled differential Sharpe signal is
+\[
+ D_{\mathrm{DSR}}
+ =\frac{B(\rho-A)-\tfrac12 A(\rho^2-B)}{V^{3/2}}
+ =\frac{B}{V^{3/2}}\left(\rho-\frac{A}{2B}\rho^2-\frac A2\right).
+\]
+The legacy implementation multiplies this by $\eta$, which leaves the policy
+optimum unchanged for a fixed $\eta$ but changes reported reward units.
+The displayed quadratic identity is only local: $A$ and $B$ depend on previous
+actions, the positive scale depends on state, and continuation depends on their
+updates. It does not imply dynamic equivalence to a fixed-$\kappa$ quadratic
+reward. Negative $A$ also gives a negative effective penalty. A constant implied
+terminal risk aversion has not been proved.
 
-\bibitem[Markowitz(1952)]{markowitz} Markowitz, H. (1952). Portfolio Selection.
-\emph{Journal of Finance} 7(1), 77--91.
+For iid $\rho$ with finite variance $\sigma^2$, a fixed-decay EWMA obeys
+\[
+ \lim_{t\to\infty}\Var(A_t)=\frac{\eta\sigma^2}{2-\eta}>0
+ \quad\text{when }\sigma^2>0.
+\]
+Its expectation approaches the mean, but the estimator is not consistent under
+nondegenerate iid innovations. The earlier consistency claim is withdrawn.
+The corrected bounded-tree experiment optimises the augmented reward exactly
+on a finite action set and checks sensitivity to decay and initialisation;
+it does not establish an unrestricted optimum.
 
-\bibitem[Moody and Saffell(2001)]{moody} Moody, J. and Saffell, M. (2001).
-Learning to Trade via Direct Reinforcement. \emph{IEEE Transactions on Neural
-Networks} 12(4), 875--889.
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Known benchmarks and the existing MVPI transformation}
+\label{app:mvpi}
+For iid $\nu$, deterministic risk-free growth $S=\prod_ts_t$, and initial
+wealth $x_0$,
+\begin{equation}
+ J(\pipre)=Sx_0+\frac{(1-\nu)^{-T}-1}{4\varphi},\qquad
+ J(\pieq)=Sx_0+\frac{T\nu}{4\varphi(1-\nu)}.
+\end{equation}
+The first follows from the Li--Ng embedding or the efficient-frontier square;
+the second follows by summing independent equilibrium gains in terminal units.
+Their difference has $1/\varphi$ scaling and is independent of $x_0$. These are
+consequences of known solutions, not new results.
 
-\bibitem[Strotz(1955)]{strotz} Strotz, R. H. (1955). Myopia and Inconsistency in
-Dynamic Utility Maximization. \emph{Review of Economic Studies} 23(3), 165--180.
+Signed telescoping differences in $J$ must be accompanied by nonnegative
+surrogate regret $J_r(\pi^r)-J_r(\widehat\pi)$. Reported Sharpe is the mean
+terminal excess gain over $x_0\prod_ts_t$, divided by the terminal wealth
+standard deviation; it is not an annualised backtest Sharpe ratio.
 
-\bibitem[Sutton and Barto(2018)]{sutton} Sutton, R. S. and Barto, A. G. (2018).
-\emph{Reinforcement Learning: An Introduction}, 2nd ed. MIT Press.
+Zhang, Liu and Whiteson (2021), Algorithm~1, uses
+\[
+ \widehat r=(1+2\varphi y)r-\varphi r^2,
+\]
+where $y$ is the occupancy mean reward. In the finite-horizon uniform-time
+adaptation at $s=1$ with iid returns, each exact inner solve gives deterministic
+identical holdings $u_n=dh_n$. Hence $y_n=m^{\top}u_n=\nu h_n$, and
+\[
+ h_{n+1}=\frac{1}{2\varphi}+\nu h_n
+ \;\longrightarrow\;
+ h^*=\frac{1}{2\varphi(1-\nu)},\qquad 0\le\nu<1.
+\]
+The fixed point is exactly the scalar-calibrated equilibrium. This is an
+elementary reduction of existing MVPI, not a new learning method. At nonzero
+interest, the implemented iteration is a fixed-point method for a per-step
+mean-volatility objective. Numerical convergence alone establishes neither
+a global optimum nor terminal mean--variance equilibrium.
 
-\bibitem[Wang and Zhou(2020)]{wang} Wang, H. and Zhou, X. Y. (2020).
-Continuous-Time Mean-Variance Portfolio Selection: A Reinforcement Learning
-Framework. \emph{Mathematical Finance} 30(4), 1273--1308.
 
-\bibitem[Zhou and Li(2000)]{zhouli} Zhou, X. Y. and Li, D. (2000). Continuous-Time
-Mean-Variance Portfolio Selection: A Stochastic LQ Framework. \emph{Applied
-Mathematics and Optimization} 42, 19--33.
+\clearpage
 
-\bibitem[Xiong et al.(2022)]{xiong} Xiong, H., Xu, T., Liang, Y. and Zhang, W.
-(2022). Deterministic Policy Gradient: Convergence Analysis. \emph{Proceedings of
-UAI}, PMLR 180.
+\begin{thebibliography}{99}
+\small
+\bibitem[Kolm and Ritter(2019)]{ref1} Petter N. Kolm; Gordon Ritter. Dynamic Replication and Hedging: A Reinforcement Learning Approach. The Journal of Financial Data Science 1(1), 159--171 (2019). \url{https://doi.org/10.3905/jfds.2019.1.1.159}
+\par\smallskip\noindent\emph{Source verification.} 16-page author manuscript at smallake.kr; figures are missing in this manuscript. Text and equations read; journal PDF unavailable. ``Automatic hedging in theory'', manuscript pp. 7--8, Eqs. (8)--(10), footnote 4; ``Automatic hedging in practice'', pp. 9--14, Exhibits 1--5.
+
+\bibitem[Jiang et al.(2017)]{ref2} Zhengyao Jiang; Dixing Xu; Jinjun Liang. A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem. arXiv preprint 1706.10059 (2017). \url{https://arxiv.org/abs/1706.10059}
+\par\smallskip\noindent\emph{Source verification.} arXiv v2, 16 July 2017; saved PDF. \S{}\S{}2.2--2.4, \S{}4.2 Eqs. (21)--(22), \S{}4.3; Tables 1--2; \S{}6.
+
+\bibitem[Yang et al.(2020)]{ref3} Hongyang Yang; Xiao-Yang Liu; Shan Zhong; Anwar Walid. Deep Reinforcement Learning for Automated Stock Trading: An Ensemble Strategy. Proceedings of the First ACM International Conference on AI in Finance (ICAIF), 8 pages (2020). \url{https://doi.org/10.1145/3383455.3422540}
+\par\smallskip\noindent\emph{Source verification.} Columbia-hosted author manuscript; saved PDF. Do not use the later 2025 arXiv upload as a 2020 identifier. \S{}3.3 Eq. (4); \S{}5 ensemble selection; \S{}6.1 and Fig. 4; \S{}6.2.4 and Table 2.
+
+\bibitem[Moody and Saffell(2001)]{ref4} John Moody; Matthew Saffell. Learning to Trade via Direct Reinforcement. IEEE Transactions on Neural Networks 12(4), 875--889 (2001). \url{https://doi.org/10.1109/72.935097}
+\par\smallskip\noindent\emph{Source verification.} IDSIA-hosted 17-page manuscript, visually read because text encoding is corrupted. \S{}II-D, Eqs. (12)--(17), PDF pp. 3--4; \S{}III-A Eq. (31); \S{}IV-A, Fig. 5; \S{}IV-C.2, Fig. 8.
+
+\bibitem[Bisi et al.(2020)]{ref5} Lorenzo Bisi; Luca Sabbioni; Edoardo Vittori; Matteo Papini; Marcello Restelli. Risk-Averse Trust Region Optimization for Reward-Volatility Reduction. Proceedings of IJCAI-20, 4583--4589 (2020). \url{https://doi.org/10.24963/ijcai.2020/632}
+\par\smallskip\noindent\emph{Source verification.} Published proceedings PDF, saved and read. \S{}3 Eqs. (3)--(6); \S{}\S{}4--5, Algorithm 1; \S{}7.1--7.2, Fig. 1(a)--(d).
+
+\bibitem[Zhang et al.(2021)]{ref6} Shangtong Zhang; Bo Liu; Shimon Whiteson. Mean-Variance Policy Iteration for Risk-Averse Reinforcement Learning. Proceedings of AAAI 35(12), 10905--10913 (2021). \url{https://doi.org/10.1609/aaai.v35i12.17302}
+\par\smallskip\noindent\emph{Source verification.} arXiv:2004.10888v6, 7 April 2022; differs in date from published 2021 proceedings. ``Mean-Variance RL'', Eq. (2); ``Mean-Variance Policy Iteration'', Eqs. (3)--(4), Algorithm 1, Propositions 1--2; ``Experiments'', Table 1.
+
+\bibitem[Wang and Zhou(2020)]{ref7} Haoran Wang; Xun Yu Zhou. Continuous-Time Mean-Variance Portfolio Selection: A Reinforcement Learning Framework. Mathematical Finance 30(4), 1273--1308 (2020). \url{https://doi.org/10.1111/mafi.12281}
+\par\smallskip\noindent\emph{Source verification.} arXiv:1904.11392, saved 39-page preprint; section references refer to this version. \S{}2 Eq. (11); \S{}3 Theorems 1 and 3; \S{}4; \S{}5.1 Table 1, \S{}\S{}5.2--5.3.
+
+\bibitem[Dai et al.(2023)]{ref8} Min Dai; Yuchao Dong; Yanwei Jia. Learning Equilibrium Mean-Variance Strategy. Mathematical Finance 33(4), 1166--1212 (2023). \url{https://doi.org/10.1111/mafi.12402}
+\par\smallskip\noindent\emph{Source verification.} NUS RMI Working Paper 2021-02, March 2021, 52 pages, read via web PDF. Local download blocked; journal section numbering not asserted. Working version \S{}\S{}2--3, \S{}4.2 Theorem 2; \S{}5 Algorithm 1; \S{}6.1--6.2, Fig. 1.
+
+\bibitem[Li and Ng(2000)]{ref9} Duan Li; Wan-Lung Ng. Optimal Dynamic Portfolio Selection: Multiperiod Mean-Variance Formulation. Mathematical Finance 10(3), 387--406 (2000). \url{https://doi.org/10.1111/1467-9965.00100}
+\par\smallskip\noindent\emph{Source verification.} Journal PDF mirrored at tianjiablog.wordpress.com; saved. \S{}\S{}3--4, Theorems 1--2 (embedding); \S{}5 riskless-asset case.
+
+\bibitem[Basak and Chabakauri(2010)]{ref10} Suleyman Basak; Georgy Chabakauri. Dynamic Mean-Variance Asset Allocation. The Review of Financial Studies 23(8), 2970--3016 (2010). \url{https://doi.org/10.1093/rfs/hhq028}
+\par\smallskip\noindent\emph{Source verification.} Author thesis chapter 2, ``Dynamic Mean-Variance Asset Allocation'', read; journal full text unavailable. Chapter numbering is not journal numbering. Thesis chapter 2 \S{}2.2.2, Proposition 2.1, Eqs. (148)--(149); \S{}2.2.2 Remark 1; \S{}2.2.4; discrete-time extension in \S{}2.4.
+
+\bibitem[Ng et al.(1999)]{ref11} Andrew Y. Ng; Daishi Harada; Stuart Russell. Policy Invariance under Reward Transformations: Theory and Application to Reward Shaping. Proceedings of ICML, 278--287 (1999). \url{https://ai.stanford.edu/~ang/papers/shaping-icml99.pdf}
+\par\smallskip\noindent\emph{Source verification.} Author-hosted 10-page conference paper; visually read due to encoding. No DOI asserted. \S{}3 Theorem 1, Eq. (2), Corollary 2; \S{}4 Figures 1--2; Appendix A.
+
+\bibitem[Björk and Murgoci(2014)]{ref12} Tomas Björk; Agatha Murgoci. A Theory of Markovian Time-Inconsistent Stochastic Control in Discrete Time. Finance and Stochastics 18(3), 545--592 (2014). \url{https://doi.org/10.1007/s00780-014-0234-y}
+\par\smallskip\noindent\emph{Source verification.} Publisher metadata and abstract only; full-text verification OPEN. Not counted as a paper fully read. Publisher abstract only; no theorem number or detailed comparison asserted.
 
 \end{thebibliography}
 

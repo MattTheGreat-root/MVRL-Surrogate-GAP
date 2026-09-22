@@ -1,0 +1,294 @@
+% Typeset proof appendix. Mathematical content corresponds to notes/PROOFS.md.
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Second moments and the exact reward recursion}
+\label{app:recursion}
+For the wealth increment $\Delta X_t$, the raw reward satisfies
+\[
+ \E[\Delta X_t-\kappa(\Delta X_t)^2]
+ =\E[\Delta X_t]-\kappa\Var(\Delta X_t)-\kappa\E[\Delta X_t]^2.
+\]
+Calling this simply a variance penalty hides an additional squared-mean penalty.
+The conditional-variance reward $m^{\top}u-\varphi u^{\top}\Sigma u$ has a different
+optimum. The zero-interest calibration follows from this distinction and the
+Sherman--Morrison identity; it is not an unexplained failure of Bellman optimisation.
+
+\begin{proposition}[Exact raw-reward recursion; proved]
+Let $M_t=\Sigma_t+m_tm_t^{\top}$, $d_t=M_t^{-1}m_t$ and
+$\nu_t=m_t^{\top}d_t$. For the quadratic increment reward, write the value function as
+$W_t(x)=p_tx^2+q_tx+c_t$ and put
+$g_t=\kappa(s_t-1)-p_{t+1}s_t$. The optimal action is
+$u_t(x)=\alpha_tx+\beta_t$, where
+\begin{align}
+ \alpha_t&=-\frac{d_tg_t}{\kappa-p_{t+1}},&
+ \beta_t&=\frac{d_t(1+q_{t+1})}{2(\kappa-p_{t+1})},\\
+ p_t&=\frac{\kappa p_{t+1}-(1-\nu_t)g_t^2}{\kappa-p_{t+1}},&
+ 1+q_t&=(1+q_{t+1})\left(s_t-\frac{\nu_tg_t}{\kappa-p_{t+1}}\right),
+\end{align}
+with $p_T=q_T=0$.
+\end{proposition}
+\begin{proof}
+Completing the square in the Bellman maximisation yields the displayed formulas.
+The action Hessian is $-2(\kappa-p_{t+1})M_t$. Backward induction gives $p_t\le0$,
+so this Hessian is negative definite. The maximisation is therefore over all
+admissible Markov actions, not merely an affine search class. The constant $c_t$
+does not affect actions.
+\end{proof}
+For iid moments and $s=1$, the optimum is $d/(2\kappa)$, whereas equilibrium is
+$\Sigma^{-1}m/(2\varphi)=d/[2\varphi(1-\nu)]$. For $m\ne0$, they agree if and
+only if $\kappa=\varphi(1-\nu)$. For $m=0$, both are zero for every $\kappa>0$.
+
+For $T=1$, matching refers to the initial action, not equality of functions at
+all wealth values. If $m\ne0$, a positive finite matching penalty exists precisely when
+\[
+ \frac{1}{2\varphi(1-\nu)}+(s-1)x_0>0.
+\]
+
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{General-horizon small-interest mismatch}
+\label{app:horizon}
+\begin{theorem}[Fixed-horizon local mismatch; proved]
+Let $m\ne0$ and $\Sigma\succ0$ be constant, $T\ge2$ fixed, $s=1+e$, and
+$b=1/[2\varphi(1-\nu)]$. Define the one-sided occupancy discrepancy
+\[
+ D^2(\pi^\kappa,\pieq)
+ =\sum_{t=0}^{T-1}\E_{\pi^\kappa}
+   \bigl\|\pi^\kappa(t,X_t)-\pieq(t,X_t)\bigr\|^2.
+\]
+For sufficiently small $|e|$,
+\begin{align}
+ \min_{\kappa>0}D(\pi^\kappa,\pieq)&=c_T|e|+O(e^2),\\
+ c_T&=\|d\|b\sqrt{\frac{T(T^2-1)}{3}
+            +\frac{\nu(1-\nu)T(T-1)}{2}}.
+\end{align}
+\end{theorem}
+The quantity $D$ is a discrepancy rather than a symmetric metric. For $T=2$,
+the bracket is $(2-\nu)(1+\nu)$. As $T\to\infty$ with other parameters fixed,
+$c_T\sim\|d\|bT^{3/2}/\sqrt{3}$; no uniform joint limit in $e$ and $T$ is asserted.
+
+\begin{proof}
+Divide $p_t$ by $\kappa$ in the recursion. The quantities $p_t/\kappa$ and
+$q_t$, hence $\alpha_t$, are independent of $\kappa$, while $\beta_t$ is linear
+in $h=1/(2\kappa)$. On each common return path, controlled wealth has the form
+$X_t=L_t(e)x_0+hZ_t(e)$. Consequently $F(e,h)=D^2$ is exactly quadratic in $h$.
+Its coefficients are analytic near $e=0$: the finite backward recursions have
+nonzero denominators there, and moment propagation uses only finite second moments.
+At zero interest,
+\[
+ F(0,h)=T\|d\|^2(h-b)^2.
+\]
+The coefficient of $h^2$ is strictly positive. The global unconstrained minimiser
+$h^*(e)$ is therefore analytic and stays positive near zero, so it is also the
+global minimiser over $h>0$. This justifies the minimisation and local Taylor
+expansion without assuming that a fitted local optimum is global.
+
+Write $\kappa=\varphi(1-\nu)(1+we)$. Uniformly for bounded $w$,
+\begin{align*}
+ \alpha_t&=-de+O(e^2),\\
+ \beta_t&=db\{1+[(T-t-1)(1-\nu)-w]e\}+O(e^2),\\
+ \beta_t^{\mathrm{eq}}&=db[1-(T-t-1)e]+O(e^2).
+\end{align*}
+At $e=0$, the common policy is $db$, so
+\[
+ \E[X_t]=x_0+t\nu b,\qquad
+ \Var(X_t)=tb^2\nu(1-\nu).
+\]
+The leading action difference is $de$ times the scalar random variable
+\[
+ -X_t+b[(T-t-1)(2-\nu)-w].
+\]
+Its means form an arithmetic progression with step $-2b$. Minimisation gives
+$w^*=(T-1)(1-\nu)-x_0/b$, and the centred means are $b(T-1-2t)$.
+Their squared sum is $b^2T(T^2-1)/3$; the sum of the variances is
+$b^2\nu(1-\nu)T(T-1)/2$. Analyticity yields
+$\min_hF(e,h)=c_T^2e^2+O(e^3)$. Since $c_T>0$, taking square roots gives
+remainder $O(e^2)$.
+\end{proof}
+
+The same leading coefficient holds under fixed equilibrium occupancy: at
+$e=0$ the occupancies coincide and only zeroth-order moments enter the leading
+quadratic term. Away from zero interest, these discrepancies differ and must be labelled.
+
+For $m\ne0$, $s\ne1$ and $T\ge2$, exact matching along the surrogate occupancy
+is impossible. Matching at time zero forces the nonzero equilibrium action,
+hence positive next-wealth variance. Subsequent nonzero equilibrium actions
+preserve positive variance. At the final date, the surrogate slope is $-d(s-1)$
+and the equilibrium slope is zero, contradicting almost-sure matching.
+This obstruction concerns the raw increment family, not all additive rewards.
+
+No global bound of the previously proposed form
+\[
+ D\le C\bigl(|\kappa-\kappa_0|+c|s-1|\bigr)
+\]
+with $C$ constant over all $\kappa>0$ follows. At $s=1$,
+$D=\sqrt{T}\|d\||1/(2\kappa)-b|$ diverges as $\kappa\downarrow0$ while the
+proposed right-hand side remains bounded. A local bound on compact positive
+penalty sets is valid by smoothness.
+
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Time-varying independent returns and reward redesign}
+\label{app:redesign}
+Let $H_t=\prod_{j=t+1}^{T-1}s_j$, with empty product one.
+\begin{proposition}[Independent-return exact recovery; proved]
+Under independent returns, deterministic positive rates, known first two
+moments and unconstrained risky dollar holdings, the equilibrium action is
+\[
+ u_t^{\mathrm{eq}}=\frac{\Sigma_t^{-1}m_t}{2\varphi H_t}.
+\]
+The additive reward
+\[
+ Y_t=H_tP_t^{\top}u_t,\qquad
+ r_t^{\mathrm{design}}=Y_t-\varphi(1-\nu_t)Y_t^2
+\]
+has this same optimal action at each date.
+\end{proposition}
+\begin{proof}
+Under future deterministic holdings,
+$X_T=H_t(s_tx+P_t^{\top}u)+\text{future gains}$.
+Independence removes action-dependent covariance with future gains. The
+one-step objective has action-dependent part
+\[
+ H_tm_t^{\top}u-\varphi H_t^2u^{\top}\Sigma_tu.
+\]
+Strict concavity gives the stated action; backward induction establishes
+deterministic equilibrium holdings.
+
+Each conditional expected redesigned reward is strictly concave in $u$ and
+independent of wealth. Exogenous independent returns and unconstrained actions
+make pointwise maximisation at every date globally optimal for the additive
+expectation, even among history-dependent policies. Its maximiser is
+\[
+ \frac{d_t}{2\varphi(1-\nu_t)H_t}=u_t^{\mathrm{eq}}.
+\]
+\end{proof}
+The redesign measures excess gains in terminal units and applies date-specific
+calibration. It reproduces equilibrium, not the precommitted optimum. The
+alternative conditional-variance reward
+$Y_t-\varphi H_t^2u_t^{\top}\Sigma_tu_t$ has the same conditional maximiser.
+Both constructions require moments and a specified target. Neither implies a
+universal improvement in initial $J$: another policy can outperform equilibrium
+at time zero.
+
+If every $s_t=1$, a common raw $\kappa$ matches equilibrium if and only if all
+nonzero-mean dates have the same $\nu_t$ and $\kappa=\varphi(1-\nu_t)$.
+Writing $a_t=\|d_t\|^2$ and $b_t=1/[2\varphi(1-\nu_t)]$, all holdings are
+deterministic and
+\[
+ D^2=\sum_ta_t(h-b_t)^2,\qquad
+ \min_hD^2=\sum_ta_t(b_t-\bar b)^2,\qquad
+ \bar b=\frac{\sum_ta_tb_t}{\sum_ta_t}.
+\]
+This lower bound is positive exactly when $b_t$ varies over positive-weight
+dates. Time variation alone does not imply unavoidable mismatch: $\nu_t$ may
+remain constant. If all $a_t=0$, every action is zero and the distance is zero;
+$\bar b$ need not be defined.
+
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Predictable Markov returns and the continuation hedge}
+\label{app:dependence}
+For scalar excess return $P$ and observed finite regime $z$, specify the joint
+conditional law of $(P,z_{t+1})$. Rates are deterministic. Let equilibrium
+terminal-mean continuation be
+$f_{t+1}(x,z')=H_tx+a_{t+1}(z')$; its conditional variance is independent of wealth.
+The current action-dependent variance is
+\[
+ H_t^2\Var(P\mid z)u^2
+ +2H_t\operatorname{Cov}(P,a_{t+1}(z_{t+1})\mid z)u.
+\]
+Therefore
+\begin{equation}
+ u^{\mathrm{eq}}(t,z)=\frac{m_z}{2\varphi H_t\Var(P\mid z)}
+ -\frac{\operatorname{Cov}(P,a_{t+1}(z_{t+1})\mid z)}{H_t\Var(P\mid z)}.
+\end{equation}
+Backward propagation of conditional first and second moments establishes the
+formula. Positive conditional return variance makes this a strict global
+one-step maximum. Substituting $\kappa=\varphi(1-\nu_z)$ state by state produces
+only the first term. A nonzero hedge covariance defeats this substitution even
+at zero interest.
+
+An equilibrium-informed reward is
+\begin{align}
+ r&=Y-\varphi(1-\nu_z)Y^2
+       -2\varphi\operatorname{Cov}(P,a_{t+1}\mid z)H_tu,\\
+ Y&=H_tPu.
+\end{align}
+Its conditional derivative gives exactly $u^{\mathrm{eq}}$. Exogenous
+transitions and wealth independence make these pointwise maximisers globally
+optimal for the sum. This is inverse control using an already solved
+continuation, not a model-free shortcut or a novelty claim. The relevant
+diagnostic is the quantified failure of local calibration and recovery of the
+missing hedge. Mean--variance hedging under dependence is established literature.
+
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Differential Sharpe: finite-horizon conclusions}
+\label{app:dsr}
+With $A'=A+\eta(\rho-A)$, $B'=B+\eta(\rho^2-B)$ and $V=B-A^2>0$,
+\begin{equation}
+ V'=(1-\eta)V+\eta(1-\eta)(\rho-A)^2>0,\qquad0<\eta<1.
+\end{equation}
+For bounded returns $|\rho|\le R$, finite $T$, and $V_0>0$,
+$V_t\ge(1-\eta)^tV_0>0$, and the DSR reward is bounded on the reachable
+finite-horizon state set. A state including market predictors, previous holdings
+if costs apply, wealth, $A$ and $B$ supports ordinary finite-horizon Bellman
+recursion. No infinite-horizon fixed-point conclusion follows without additional assumptions.
+
+The unscaled differential Sharpe signal is
+\[
+ D_{\mathrm{DSR}}
+ =\frac{B(\rho-A)-\tfrac12 A(\rho^2-B)}{V^{3/2}}
+ =\frac{B}{V^{3/2}}\left(\rho-\frac{A}{2B}\rho^2-\frac A2\right).
+\]
+The legacy implementation multiplies this by $\eta$, which leaves the policy
+optimum unchanged for a fixed $\eta$ but changes reported reward units.
+The displayed quadratic identity is only local: $A$ and $B$ depend on previous
+actions, the positive scale depends on state, and continuation depends on their
+updates. It does not imply dynamic equivalence to a fixed-$\kappa$ quadratic
+reward. Negative $A$ also gives a negative effective penalty. A constant implied
+terminal risk aversion has not been proved.
+
+For iid $\rho$ with finite variance $\sigma^2$, a fixed-decay EWMA obeys
+\[
+ \lim_{t\to\infty}\Var(A_t)=\frac{\eta\sigma^2}{2-\eta}>0
+ \quad\text{when }\sigma^2>0.
+\]
+Its expectation approaches the mean, but the estimator is not consistent under
+nondegenerate iid innovations. The earlier consistency claim is withdrawn.
+The corrected bounded-tree experiment optimises the augmented reward exactly
+on a finite action set and checks sensitivity to decay and initialisation;
+it does not establish an unrestricted optimum.
+
+\ifdim\dimexpr\pagegoal-\pagetotal\relax<120pt\newpage\fi
+\section{Known benchmarks and the existing MVPI transformation}
+\label{app:mvpi}
+For iid $\nu$, deterministic risk-free growth $S=\prod_ts_t$, and initial
+wealth $x_0$,
+\begin{equation}
+ J(\pipre)=Sx_0+\frac{(1-\nu)^{-T}-1}{4\varphi},\qquad
+ J(\pieq)=Sx_0+\frac{T\nu}{4\varphi(1-\nu)}.
+\end{equation}
+The first follows from the Li--Ng embedding or the efficient-frontier square;
+the second follows by summing independent equilibrium gains in terminal units.
+Their difference has $1/\varphi$ scaling and is independent of $x_0$. These are
+consequences of known solutions, not new results.
+
+Signed telescoping differences in $J$ must be accompanied by nonnegative
+surrogate regret $J_r(\pi^r)-J_r(\widehat\pi)$. Reported Sharpe is the mean
+terminal excess gain over $x_0\prod_ts_t$, divided by the terminal wealth
+standard deviation; it is not an annualised backtest Sharpe ratio.
+
+Zhang, Liu and Whiteson (2021), Algorithm~1, uses
+\[
+ \widehat r=(1+2\varphi y)r-\varphi r^2,
+\]
+where $y$ is the occupancy mean reward. In the finite-horizon uniform-time
+adaptation at $s=1$ with iid returns, each exact inner solve gives deterministic
+identical holdings $u_n=dh_n$. Hence $y_n=m^{\top}u_n=\nu h_n$, and
+\[
+ h_{n+1}=\frac{1}{2\varphi}+\nu h_n
+ \;\longrightarrow\;
+ h^*=\frac{1}{2\varphi(1-\nu)},\qquad 0\le\nu<1.
+\]
+The fixed point is exactly the scalar-calibrated equilibrium. This is an
+elementary reduction of existing MVPI, not a new learning method. At nonzero
+interest, the implemented iteration is a fixed-point method for a per-step
+mean-volatility objective. Numerical convergence alone establishes neither
+a global optimum nor terminal mean--variance equilibrium.
