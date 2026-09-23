@@ -1,3 +1,5 @@
+> Current-state notice (22 September 2026): this is a historical diary. The latest dated entry and FINDINGS.md supersede earlier proof, novelty, numeric and completion claims.
+
 # Work log
 
 Everything done from the start of implementation, in order, including the
@@ -244,48 +246,6 @@ Both added to the paper as Section 4.2 and to the verification subsection.
 
 ---
 
-## Stage 8 — Phase 3: the differential Sharpe ratio
-
-Expected this to need new machinery. It did not.
-
-Expanding the DSR increments algebraically shows it is a variance-penalised
-return reward with `kappa_eff = A/(2B)`. Since `A`, `B` estimate the first two
-moments of the realised return, `kappa_eff -> E[rho]/(2E[rho^2])` — a market
-quantity with no preference parameter in it.
-
-**False start.** The first run gave `B* = 3080`, nonsense. Cause: over a
-4-period horizon with `eta = 0.05` the moment estimates never leave their
-initial values, so `kappa_eff` was pure initialisation artefact. Rebuilt around
-the stationary regime (long horizon, or `A_0, B_0` started at converged values).
-
-Result: the DSR optimum sits in the variance-penalised family at `kappa = 21.56`
-against a predicted 22.51, residual distance 0.019. Implied risk aversion 27.9.
-
-**Overclaim caught.** A draft sentence said tuning `eta` "silently retunes the
-investor's risk preference". Measured effect across `eta` in [0.02, 0.4]: about
-2%. Softened.
-
----
-
-## Stage 9 — Phase 5: out of model
-
-The proposal called for a historical comparison; no market data is available
-here, so the substitute is deliberate misspecification with the first two
-moments held fixed.
-
-**Result that contradicted the text I had already written.** I wrote "the
-ranking is unchanged" before running it. Under AR(1) momentum the ranking
-*reverses*, and the pre-committed policy collapses from 1.427 to 0.929. Fat
-tails and volatility clustering leave it intact; dependence does not. Corrected,
-and promoted from a caveat to a stated limitation of the whole analysis.
-
-**Statistical power.** Asking how often a Sharpe comparison of `n` independent
-replications selects the `J`-better policy: 0.022 at `n=10`, 0.000 at `n>=200`.
-More data makes it more confidently wrong. This is the strongest version of the
-paper's third gap.
-
----
-
 ## What is not done
 
 - **The priority search.** Now done across the equilibrium mean-variance and
@@ -325,7 +285,31 @@ a check, not by inspection.
 | 7 | Wrong explanation of negative `eps_learn` | Auditing rather than accepting the plausible story |
 | 8 | "`c` grows linearly in `T`" | Fitting rather than eyeballing |
 | 9 | Concavity stated as a hypothesis when it is automatic | Testing when it fails, and finding it never does |
-| 10 | Proposal claimed `Lambda = 0` for the log-return reward | Actually running the consistency check it proposed |
-| 11 | DSR `B* = 3080` from initialisation, not the market | Sanity-checking a number that looked absurd |
-| 12 | Claimed `eta` strongly retunes risk preference (it is ~2%) | Measuring the sensitivity instead of asserting it |
-| 13 | Wrote "ranking is unchanged out of model" before running it | Running it |
+
+## 21 September 2026 — Complete input audit
+Read the whole delivered project and ZIP before changes; see notes/INITIAL_AUDIT.md for coverage and contradictions. Original documents, figures, and newer standalone files preserved under archive/2026-09-21-before-audit. No separate implementation report or raw experiment records were delivered. Current source of truth will be this package; parent duplicates will point here. Dependency installation is isolated in /private/tmp/mvrl-env. Research first: general-horizon proof, reward redesign, dependent benchmark, DSR correction; proposal comes after verified results.
+
+## 21–22 September 2026 — Research completed at a stated scope; proposal rebuilt
+
+**PROVED:** general fixed-horizon small-interest coefficient and remainder, including global penalty minimisation near zero interest. c_T grows as T^(3/2), not linearly. A terminal-unit excess-gain reward with date-specific second-moment correction exactly recovers the independent-return equilibrium. Common raw-penalty failure under varying moments has a weighted-dispersion lower bound, with equal-nu exceptions. Corrected positivity/zero-mean/one-period qualifications; withdrew the global Lambda inequality.
+
+**PROVED:** observed scalar regime equilibrium includes a continuation covariance hedge. Added exact joint return/next-regime backward recursions, precommitment embedding, target occupancy evaluation and an equilibrium-informed reward correction. A new independent recovery test caught an erroneous (1−nu) factor in the linear hedge correction. It was removed from both proof and implementation before reporting; final coefficient is −2phi H u Cov(P,a_next|z).
+
+**PROVED / NUMERICALLY VERIFIED:** DSR local algebra, positive augmented variance propagation, bounded finite-horizon well-posedness; fixed-eta EWMA inconsistency. Exhaustive finite trees demonstrate dynamic continuation and sensitivity to initial A,B and eta. No fixed-kappa dynamic equivalence, constant implied risk aversion or infinite-horizon fixed point is claimed.
+
+**NUMERICALLY VERIFIED:** 120 independent parameter configurations (720 policy records), 27 mean/volatility/correlation configurations (81 records), 30 scaling cases, time-varying and four observed-regime markets, 64 bounded reward/grid/risk-aversion comparisons, 12 DSR initialisation/decay cases, four MVPI adaptations. Closed-form policies checked with independent optimisation, enumeration and one-step deviations.
+
+**PRELIMINARY:** 15 matched-budget training runs (five seeds, three rewards, 4,000 iterations, batch512), 360 moment-estimation records and 160 frozen-policy stress records. Redesign gives exact alignment but no learned-J advantage at current budget; AR(1) stress reverses its J advantage over raw. Included these negative findings prominently.
+
+**Literature:** inspected primary versions of Kolm–Ritter, Jiang–Xu–Liang, Yang et al., Moody–Saffell, Bisi et al., Zhang–Liu–Whiteson, Wang–Zhou, Dai–Dong–Jia, Li–Ng, Basak–Chabakauri (thesis chapter), and Ng–Harada–Russell. Exact metadata/locators and limitations in ledger. Björk–Murgoci remains abstract-only, Ritter2017 inaccessible. Some author versions differ from final publications; no journal section numbers invented. Moody/Ng PDFs were visually inspected because extraction was corrupt. Broad absence-of-objective-analysis and first-equilibrium-RL claims are false. The adapted MVPI fixed point gives the same zero-interest calibration, proved algebraically and verified numerically. Publication priority of the quantitative results remains OPEN.
+
+**Implementation:** stable wealth-variance propagation, corrected excess Sharpe subtraction, integrated/rewrote standalone DSR and stress scripts, replaced stale module claims, retained archival originals. Saved all outputs, histories, protocols, environment and builders. New pytest suite: 25 passed; original verifier: 10 passed. Generated ten scientific figure pairs. Proposal now centres the problem/method/result and includes comparisons, established results, limitations and proposed extensions. Paper carries the full proof appendix. Both use shared content and saved data; PDFs rendered for visual verification. README/FINDINGS/implementation report and root copies reconciled.
+
+**Still OPEN:** unrestricted/infinite-horizon DSR, constrained/cost/dependent multi-asset exact designs, estimated continuation hedges, systematic priority verification and full published algorithm/historical replications. A completed audit/revision is not completion of every possible research extension. Old diary statements below/above are historical; current FINDINGS.md governs.
+
+
+## 22 September 2026 — Restore the original LaTeX presentation
+
+User requested that both revised documents retain the original proposal/paper format and font. Inspected the archived original sources and title pages: 11pt A4 `article`, one-inch margins, UTF-8/T1 Computer Modern, original titles and Matin Tavakoli author blocks, standard numbered headings and centred page numbers. Preserved the report-style revision in `archive/2026-09-22-report-layout/`. Replaced the ReportLab renderer with genuine LaTeX source generation and compilation; converted display mathematics and proof appendix to native LaTeX, retained all ten figures as vector PDFs, kept updated evidence labels and literature limitations. The revised research data and experiments are unchanged. The paper's proof material is now in a conventional appendix. Compilation and visual QA are recorded after the build below.
+
+Final presentation verification: compiled both documents with pdfLaTeX (TeX Live 2026), three passes each. Proposal: 12 pages; paper: 17 pages. Both retain the original 11pt A4 article, one-inch margins, Computer Modern body/math fonts, original title/author styling, and standard page numbering. Each has ten vector figures and twelve resolved source records. No overfull boxes, missing glyph warnings, or unresolved citations/references. Rendered and inspected all pages; corrected orphan headings and awkward final-section placement. Research-output SHA256 is unchanged. Saved `results/latex_verification.txt` and compiler logs; refreshed complete delivery and added a compact standalone `latex-original-format.zip` source bundle.
